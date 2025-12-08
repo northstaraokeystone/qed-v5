@@ -331,6 +331,118 @@ def load_scenarios(jsonl_path: Optional[str] = None) -> List[Dict[str, Any]]:
 # Edge Lab Runner
 # -----------------------------------------------------------------------------
 
+def run_scenarios(
+    scenarios: List[Dict[str, Any]],
+    n: int = 1,
+    bit_depth: int = 12,
+    sample_rate_hz: float = 1000.0,
+    recall_threshold: float = 0.95,
+) -> List[Dict[str, Any]]:
+    """
+    Run edge lab scenarios through QED and return metric dicts.
+
+    Args:
+        scenarios: List of scenario dicts with schema: {scenario_id, hook, type, expected_loss, signal}.
+        n: Number of iterations per scenario (default: 1).
+        bit_depth: Bit depth for QED compression (default: 12).
+        sample_rate_hz: Sample rate in Hz (default: 1000.0).
+        recall_threshold: Threshold for hit/miss classification (default: 0.95).
+
+    Returns:
+        List of metric dicts with: scenario_id, hook, hit, miss, latency_ms, ratio, recall, violations, verified.
+    """
+    results = []
+
+    for scenario in scenarios:
+        # Validate scenario
+        is_valid, error = validate_scenario(scenario)
+        if not is_valid:
+            results.append({
+                "scenario_id": scenario.get("scenario_id", "unknown"),
+                "hook": scenario.get("hook", "unknown"),
+                "hit": False,
+                "miss": True,
+                "latency_ms": 0.0,
+                "ratio": 0.0,
+                "recall": 0.0,
+                "violations": 0,
+                "verified": False,
+                "error": error,
+            })
+            continue
+
+        scenario_id = scenario["scenario_id"]
+        hook = scenario["hook"]
+        signal = np.array(scenario["signal"])
+
+        # Map hook to scenario name for qed()
+        hook_to_scenario = {
+            "tesla": "tesla_fsd",
+            "spacex": "spacex_flight",
+            "neuralink": "neuralink_stream",
+            "boring": "boring_tunnel",
+            "starlink": "starlink_flow",
+            "xai": "xai_eval",
+        }
+        scenario_name = hook_to_scenario.get(hook, "generic")
+
+        # Run n iterations and average metrics
+        iter_latencies = []
+        iter_ratios = []
+        iter_recalls = []
+        iter_violations = []
+        iter_verified = []
+        error_msg = None
+
+        for _ in range(n):
+            t0 = time.perf_counter()
+            try:
+                result = qed(
+                    signal=signal,
+                    scenario=scenario_name,
+                    bit_depth=bit_depth,
+                    sample_rate_hz=sample_rate_hz,
+                    hook_name=hook,
+                )
+                latency_ms = (time.perf_counter() - t0) * 1000
+                iter_latencies.append(latency_ms)
+                iter_ratios.append(result["ratio"])
+                iter_recalls.append(result["recall"])
+                receipt = result["receipt"]
+                iter_violations.append(len(receipt.violations) if receipt.violations else 0)
+                iter_verified.append(receipt.verified if receipt.verified is not None else True)
+            except Exception as e:
+                latency_ms = (time.perf_counter() - t0) * 1000
+                iter_latencies.append(latency_ms)
+                error_msg = str(e)
+                break
+
+        # Aggregate results
+        avg_latency = np.mean(iter_latencies) if iter_latencies else 0.0
+        avg_ratio = np.mean(iter_ratios) if iter_ratios else 0.0
+        avg_recall = np.mean(iter_recalls) if iter_recalls else 0.0
+        total_violations = sum(iter_violations)
+        all_verified = all(iter_verified) if iter_verified else False
+
+        hit = avg_recall >= recall_threshold and error_msg is None
+        miss = not hit
+
+        results.append({
+            "scenario_id": scenario_id,
+            "hook": hook,
+            "hit": hit,
+            "miss": miss,
+            "latency_ms": float(avg_latency),
+            "ratio": float(avg_ratio),
+            "recall": float(avg_recall),
+            "violations": total_violations,
+            "verified": all_verified,
+            "error": error_msg,
+        })
+
+    return results
+
+
 def run_edge_lab(
     jsonl_path: Optional[str] = None,
     scenario_filter: Optional[str] = None,
