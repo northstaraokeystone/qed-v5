@@ -1,0 +1,60 @@
+# QED v6 Telemetry Compression Engine Deployment
+# Persists receipts (JSONL logs) and edge_lab (manifests/samples) via volumes
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: qed
+  namespace: qed-system
+  labels:
+    app: qed
+    version: v6
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: qed
+  template:
+    metadata:
+      labels:
+        app: qed
+        version: v6
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+      containers:
+      - name: qed
+        image: qed:v6
+        imagePullPolicy: IfNotPresent
+        volumeMounts:
+        - name: receipts
+          mountPath: /receipts
+        - name: edge-lab
+          mountPath: /edge_lab
+        env:
+        - name: RECEIPTS_PATH
+          value: /receipts
+        - name: EDGE_LAB_PATH
+          value: /edge_lab
+        - name: QED_VERSION
+          value: "6.0.0"
+        - name: PYTHONDONTWRITEBYTECODE
+          value: "1"
+        - name: PYTHONUNBUFFERED
+          value: "1"
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "256Mi"
+          limits:
+            cpu: "1"
+            memory: "1Gi"
+        securityContext:
+          readOnlyRootFilesystem: false
+          allowPrivilegeEscalation: false
+      volumes:
+      - name: receipts
+        emptyDir: {}
+      - name: edge-lab
+        emptyDir: {}
