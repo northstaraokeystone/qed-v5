@@ -82,6 +82,35 @@ Each hook keeps its own normalization formulas and safety classification ladder 
 
 ---
 
+## What's new in v7
+
+- **ClarityClean adapter**: Converts QEDReceipts to text corpus; returns cleaned output plus a quality audit receipt (token_count, anomaly_density, noise_ratio).
+
+- **edge_lab v2 with public physics injection**: Injects realistic anomalies using public datasets only:
+  - NGSIM trajectories (FHWA vehicle motion data)
+  - SAE J1939 fault patterns (CAN bus fault modes)
+  - NHTSA recall frequencies (failure rates from public recalls)
+
+- **shared_anomalies.jsonl library**: Single cross-company anomaly library with fields:
+  - pattern_id (SHA3 hash), physics_domain, failure_mode
+  - dollar_value_annual, validation_recall, false_positive_rate
+  - training_score, training_role (train_cross_company or observe_only)
+  - exploit_grade (bool), cross_domain_targets
+
+- **Rule-based sims on receipts**: For each non-observe pattern, edge_lab v2:
+  - Takes 1000 receipts per hook
+  - Injects pattern-specific perturbations
+  - Computes sim_recall and sim_false_positive_rate
+
+- **mesh_view_v2**: Joins receipts, manifests, ClarityClean audits, edge_lab metrics, and library usage. Outputs include:
+  - exploit_count (patterns with exploit_grade=true)
+  - cross_domain_links (validated reuse across companies)
+  - clarity_quality_score
+
+- **Recall floor quantification**: ~300 vehicles × 3 anomalies = 900 tests. Zero misses gives recall floor ~0.9967 at 95% confidence (Clopper-Pearson).
+
+---
+
 ## ROI – what the math says
 
 All ROI logic is simple arithmetic on explicit inputs (telemetry volume, storage/network pricing, incident rates, value per event). No dark boxes; formulas are in the domain specs and can be re-run.
