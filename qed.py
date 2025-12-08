@@ -69,8 +69,11 @@ def check_constraints(
     violations: List[Dict[str, Any]] = []
     for constraint in constraints:
         constraint_id = constraint.get("id", "unknown")
+        constraint_type = constraint.get("type", "amplitude_bound")
         bound = constraint.get("bound", float("inf"))
-        if abs(A) > bound:
+
+        # Only check amplitude_bound constraints here (other types checked in evaluate_all)
+        if constraint_type == "amplitude_bound" and abs(A) > bound:
             violations.append(
                 {
                     "constraint_id": constraint_id,
