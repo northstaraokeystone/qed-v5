@@ -8,7 +8,16 @@ Exposes a CLI with:
   - 'from-csv' for windowed processing of real telemetry data
 """
 
+import argparse
+import csv
+import json
+import sys
+from pathlib import Path
 from typing import Any, Dict, List
+
+import numpy as np
+
+import qed
 
 # -----------------------------------------------------------------------------
 # Hook metadata for QED v6 edge lab integration
@@ -16,16 +25,6 @@ from typing import Any, Dict, List
 HOOK_NAME: str = "starlink_link"
 COMPANY: str = "starlink"
 STREAM_ID: str = "satellite_bus"
-
-import argparse
-import csv
-import json
-import sys
-from pathlib import Path
-
-import numpy as np
-
-import qed
 
 _STARLINK_CHANNELS: Dict[str, Dict[str, Any]] = {
     "link_drop_rate": {
