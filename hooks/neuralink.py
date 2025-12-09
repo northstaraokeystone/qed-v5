@@ -21,13 +21,7 @@ from typing import Any, Dict, List
 import numpy as np
 
 import qed
-
-try:
-    from shared_anomalies import get_patterns_for_hook
-except ImportError:
-    def get_patterns_for_hook(hook_name: str) -> List:
-        """Fallback if shared_anomalies module not ready."""
-        return []
+from shared_anomalies import get_patterns_for_hook
 
 # -----------------------------------------------------------------------------
 # Hook metadata for QED v7 edge lab integration
