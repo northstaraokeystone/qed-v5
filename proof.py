@@ -1,26 +1,3 @@
-"""
-QED v6/v7 Proof CLI Harness
-
-CLI tool for validating QED telemetry compression and safety guarantees.
-Provides subcommands for:
-  - replay: Load edge_lab_sample.jsonl, run qed per scenario, collect metrics
-  - sympy_suite: Get constraints per hook, verify, log violations
-  - summarize: Output hits/misses/violations/ROI to JSON
-  - gates: Run legacy v5 gate checks (synthetic signals)
-
-v7 subcommands:
-  - run-sims: Run pattern simulations via edge_lab_v2
-  - recall-floor: Compute Clopper-Pearson exact recall lower bound
-  - pattern-report: Display pattern library with sorting/filtering
-  - clarity-audit: Process receipts through ClarityClean adapter
-
-What to prove:
-  - Recall >= 99.67% (95% CI on 900 anomalies)
-  - Precision > 95%
-  - ROI $38M (fleet calc)
-  - Violations = 0 on normals
-"""
-
 from __future__ import annotations
 
 import argparse
@@ -30,7 +7,9 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+# Third-party imports
 import numpy as np
+from scipy.stats import beta
 
 try:
     from tqdm import tqdm
@@ -40,15 +19,6 @@ except ImportError:
         return iterable
 
 
-import qed
-import sympy_constraints
-
-# v7 imports
-from scipy.stats import beta
-from edge_lab_v2 import run_pattern_sims
-from shared_anomalies import load_library
-from clarity_clean_adapter import process_receipts
-
 try:
     from rich.console import Console
     from rich.table import Table
@@ -56,6 +26,13 @@ try:
     RICH_AVAILABLE = True
 except ImportError:
     RICH_AVAILABLE = False
+
+# Local imports
+import qed
+import sympy_constraints
+from clarity_clean_adapter import process_receipts
+from edge_lab_v2 import run_pattern_sims
+from shared_anomalies import load_library
 
 # --- KPI Thresholds ---
 KPI_RECALL_THRESHOLD = 0.9967  # 99.67% recall CI
