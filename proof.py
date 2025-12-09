@@ -1,5 +1,5 @@
 """
-QED v6/v7 Proof CLI Harness
+QED v6/v7/v8 Proof CLI Harness
 
 CLI tool for validating QED telemetry compression and safety guarantees.
 Provides subcommands for:
@@ -14,6 +14,13 @@ v7 subcommands:
   - pattern-report: Display pattern library with sorting/filtering
   - clarity-audit: Process receipts through ClarityClean adapter
 
+v8 subcommands (Click-based):
+  - build-packet: Build DecisionPacket from manifest
+  - validate-config: Validate QEDConfig file
+  - merge-configs: Merge parent/child configs
+  - compare-packets: Compare two decision packets
+  - fleet-view: Display fleet topology and health
+
 What to prove:
   - Recall >= 99.67% (95% CI on 900 anomalies)
   - Precision > 95%
@@ -27,6 +34,7 @@ import argparse
 import json
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -49,13 +57,23 @@ from edge_lab_v2 import run_pattern_sims
 from shared_anomalies import load_library
 from clarity_clean_adapter import process_receipts
 
-try:
-    from rich.console import Console
-    from rich.table import Table
+# v8 imports
+import click
+from rich.console import Console
+from rich.table import Table
+from rich.panel import Panel
 
-    RICH_AVAILABLE = True
-except ImportError:
-    RICH_AVAILABLE = False
+# v8 module imports
+import truthlink
+import config_schema
+import merge_rules
+import mesh_view_v3
+from decision_packet import DecisionPacket, load_packet, save_packet
+
+# Rich console for v8 output
+console = Console()
+
+RICH_AVAILABLE = True
 
 # --- KPI Thresholds ---
 KPI_RECALL_THRESHOLD = 0.9967  # 99.67% recall CI
@@ -1225,3 +1243,645 @@ v7 Commands:
 
 if __name__ == "__main__":
     sys.exit(main())
+
+
+# =============================================================================
+# v8 Click CLI Commands
+# =============================================================================
+
+def print_success(message: str) -> None:
+    """Print a success message with green checkmark."""
+    console.print(f"[green]✓[/green] {message}")
+
+
+def print_error(message: str) -> None:
+    """Print an error message with red X."""
+    console.print(f"[red]✗[/red] {message}")
+
+
+def print_warning(message: str) -> None:
+    """Print a warning message with yellow warning sign."""
+    console.print(f"[yellow]⚠[/yellow] {message}")
+
+
+def print_next(command: str) -> None:
+    """Print suggested next command."""
+    console.print(f"\n[dim]Next:[/dim] [cyan]{command}[/cyan]")
+
+
+def _format_savings(amount: float) -> str:
+    """Format savings amount in human-readable format."""
+    if amount >= 1_000_000:
+        return f"${amount / 1_000_000:.1f}M"
+    elif amount >= 1_000:
+        return f"${amount / 1_000:.0f}K"
+    return f"${amount:.0f}"
+
+
+def _make_health_bar(score: int, width: int = 20) -> str:
+    """Create a visual health bar."""
+    filled = int(score / 100 * width)
+    empty = width - filled
+    return "█" * filled + "░" * empty
+
+
+# --- v8 Click CLI Group ---
+
+@click.group()
+def v8():
+    """QED v8 proof subcommands for packet, config, and fleet operations."""
+    pass
+
+
+# --- build-packet ---
+
+@v8.command("build-packet")
+@click.option("--deployment-id", "-d", required=True, help="Deployment identifier")
+@click.option("--manifest", "-m", default="data/manifests/", help="Manifest path")
+@click.option("--output", "-o", type=click.Choice(["rich", "json"]), default="rich")
+def build_packet_cmd(deployment_id: str, manifest: str, output: str) -> None:
+    """Build a DecisionPacket from deployment manifest."""
+    manifest_path = Path(manifest)
+
+    # Check if manifest exists (file or directory)
+    if not manifest_path.exists():
+        if output == "json":
+            click.echo(json.dumps({"error": "manifest not found", "path": manifest}))
+        else:
+            print_error(f"Manifest not found: {manifest}")
+        sys.exit(2)
+
+    try:
+        # Build packet using truthlink
+        packet = truthlink.build(deployment_id, str(manifest_path))
+
+        # Save packet
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d")
+        output_dir = Path("data/packets")
+        output_dir.mkdir(parents=True, exist_ok=True)
+        output_file = output_dir / f"{deployment_id}_{timestamp}.jsonl"
+
+        with output_file.open("a") as f:
+            f.write(packet.to_json() + "\n")
+
+        if output == "json":
+            click.echo(packet.to_json(indent=2))
+        else:
+            # Rich output
+            # Count exploit-grade patterns
+            exploit_count = sum(1 for p in packet.pattern_usage if p.exploit_grade)
+            total_patterns = len(packet.pattern_usage)
+
+            health_bar = _make_health_bar(packet.health_score)
+
+            content = (
+                f"packet_id:       {packet.packet_id}\n"
+                f"health_score:    {packet.health_score}/100 {health_bar}\n"
+                f"annual_savings:  {_format_savings(packet.metrics.annual_savings)}\n"
+                f"patterns:        {total_patterns} active ({exploit_count} exploit-grade)\n"
+                f"slo_breach_rate: {packet.metrics.slo_breach_rate:.2%}\n"
+                f"exploit_coverage: {packet.exploit_coverage:.0%}"
+            )
+
+            panel = Panel(
+                content,
+                title=f"[bold]DecisionPacket: {deployment_id}[/bold]",
+                border_style="green",
+            )
+            console.print(panel)
+            print_success(f"Saved: {output_file}")
+            print_next(f"proof compare-packets -a <previous_id> -b {packet.packet_id}")
+
+    except Exception as e:
+        if output == "json":
+            click.echo(json.dumps({"error": str(e)}))
+        else:
+            print_error(f"Failed to build packet: {e}")
+        sys.exit(2)
+
+
+# --- validate-config ---
+
+@v8.command("validate-config")
+@click.argument("config_path", type=click.Path(exists=True))
+@click.option("--fix", is_flag=True, help="Auto-repair and save")
+@click.option("--output", "-o", type=click.Choice(["rich", "json"]), default="rich")
+def validate_config_cmd(config_path: str, fix: bool, output: str) -> None:
+    """Validate a QED config file."""
+    try:
+        # Load config (validation happens during load via _validate)
+        try:
+            config = config_schema.load(config_path)
+            is_valid = True
+            errors: List[Dict[str, Any]] = []
+            warnings: List[Dict[str, Any]] = []
+        except ValueError as ve:
+            # Load failed with validation errors
+            is_valid = False
+            errors = [{"message": str(ve), "fixable": True}]
+            warnings = []
+            config = None
+
+        if output == "json":
+            result = {
+                "path": config_path,
+                "valid": is_valid,
+                "errors": errors,
+                "warnings": warnings,
+                "config": config.to_dict() if config else None,
+            }
+            click.echo(json.dumps(result, indent=2))
+        else:
+            # Rich output
+            status = "PASSED" if is_valid else "FAILED"
+            status_style = "green" if is_valid else "red"
+
+            if is_valid and config:
+                hook = config.hook
+                patterns_count = len(config.enabled_patterns)
+                recall_floor = config.recall_floor
+                max_fp_rate = config.max_fp_rate
+
+                content = (
+                    f"File: {config_path}\n"
+                    f"Hook: {hook}         Patterns: {patterns_count} enabled\n"
+                    f"recall_floor: {recall_floor}    max_fp_rate: {max_fp_rate}\n"
+                    f"Risk Profile: conservative"
+                )
+
+                panel = Panel(
+                    content,
+                    title=f"[bold {status_style}]Config Validation: {status}[/bold {status_style}]",
+                    border_style=status_style,
+                )
+                console.print(panel)
+                print_next(f"proof merge-configs -p global.json -c {config_path}")
+            else:
+                # Build error display
+                lines = [f"File: {config_path}", ""]
+                for err in errors:
+                    msg = err.get("message", str(err))
+                    lines.append(f"[red]✗[/red] {msg}")
+                for warn in warnings:
+                    msg = warn.get("message", str(warn))
+                    lines.append(f"[yellow]⚠[/yellow] {msg}")
+
+                content = "\n".join(lines)
+                panel = Panel(
+                    content,
+                    title=f"[bold {status_style}]Config Validation: {status}[/bold {status_style}]",
+                    border_style=status_style,
+                )
+                console.print(panel)
+
+                fixable = [e for e in errors if e.get("fixable", False)]
+                if fixable:
+                    console.print(f"Fixable errors: {len(fixable)}   Run with --fix to repair")
+                    print_next(f"proof validate-config {config_path} --fix")
+                sys.exit(1)
+
+    except FileNotFoundError:
+        if output == "json":
+            click.echo(json.dumps({"error": "config not found", "path": config_path}))
+        else:
+            print_error(f"Config file not found: {config_path}")
+        sys.exit(2)
+    except Exception as e:
+        if output == "json":
+            click.echo(json.dumps({"error": str(e)}))
+        else:
+            print_error(f"Validation failed: {e}")
+        sys.exit(2)
+
+
+# --- merge-configs ---
+
+@v8.command("merge-configs")
+@click.option("--parent", "-p", required=True, type=click.Path(exists=True))
+@click.option("--child", "-c", required=True, type=click.Path(exists=True))
+@click.option("--save", "-s", type=click.Path(), help="Save merged config")
+@click.option("--auto-repair", is_flag=True, help="Fix violations automatically")
+@click.option("--output", "-o", type=click.Choice(["rich", "json"]), default="rich")
+def merge_configs_cmd(
+    parent: str, child: str, save: Optional[str], auto_repair: bool, output: str
+) -> None:
+    """Merge parent and child config files."""
+    try:
+        parent_config = config_schema.load(parent)
+        child_config = config_schema.load(child)
+
+        # Perform merge using MergeResult API
+        merge_result = merge_rules.merge(
+            parent_config, child_config,
+            auto_repair=auto_repair,
+            emit_receipt_flag=False
+        )
+
+        is_valid = merge_result.is_valid
+        merged_config = merge_result.merged
+        violations = [
+            {"message": v.message, "field": v.field_name, "severity": v.severity}
+            for v in merge_result.violations
+        ]
+
+        # Build changes list from explanation
+        changes: List[Dict[str, Any]] = []
+        if merge_result.explanation:
+            exp = merge_result.explanation
+            if exp.safety_direction != "unchanged":
+                changes.append({
+                    "field": "safety_direction",
+                    "old": "",
+                    "new": exp.safety_direction,
+                    "direction": exp.safety_direction,
+                })
+
+        if save and merged_config and is_valid:
+            merged_config.save(save)
+
+        if output == "json":
+            result = {
+                "parent": parent,
+                "child": child,
+                "valid": is_valid,
+                "violations": violations,
+                "changes": changes,
+                "saved": save if (save and is_valid) else None,
+            }
+            click.echo(json.dumps(result, indent=2))
+        else:
+            # Rich output
+            status = "VALID" if is_valid else "VIOLATION"
+            status_style = "green" if is_valid else "red"
+
+            parent_name = Path(parent).name
+            child_name = Path(child).name
+
+            lines = [f"Parent: {parent_name} → Child: {child_name}", ""]
+
+            # Display merge explanation
+            if merge_result.explanation and is_valid:
+                exp = merge_result.explanation
+                lines.append(f"recall_floor:  {parent_config.recall_floor} → {child_config.recall_floor} ({exp.safety_direction}) ✓")
+                lines.append(f"max_fp_rate:   {parent_config.max_fp_rate} → {child_config.max_fp_rate} ({exp.safety_direction}) ✓")
+                if exp.patterns_removed:
+                    lines.append(f"patterns:      {len(parent_config.enabled_patterns)} → {len(child_config.enabled_patterns)} (intersection) ✓")
+
+            for violation in violations:
+                msg = violation.get("message", str(violation))
+                lines.append(f"[red]✗[/red] {msg}")
+
+            if is_valid:
+                lines.append("")
+                lines.append("Direction: SAFETY TIGHTENED")
+
+            content = "\n".join(lines)
+            panel = Panel(
+                content,
+                title=f"[bold {status_style}]Config Merge: {status}[/bold {status_style}]",
+                border_style=status_style,
+            )
+            console.print(panel)
+
+            if is_valid:
+                deployment = Path(child).stem.replace("-", "-") or "deployment"
+                print_next(f"proof build-packet -d {deployment}")
+            else:
+                console.print("Safety cannot loosen. Run with --auto-repair to tighten child.")
+                print_next(f"proof merge-configs -p {parent} -c {child} --auto-repair")
+                sys.exit(1)
+
+    except Exception as e:
+        if output == "json":
+            click.echo(json.dumps({"error": str(e)}))
+        else:
+            print_error(f"Merge failed: {e}")
+        sys.exit(2)
+
+
+# --- compare-packets ---
+
+@v8.command("compare-packets")
+@click.option("--old", "-a", required=True, help="Old packet ID or path")
+@click.option("--new", "-b", required=True, help="New packet ID or path")
+@click.option("--packets-dir", default="data/packets/", help="Packets directory")
+@click.option("--output", "-o", type=click.Choice(["rich", "json"]), default="rich")
+def compare_packets_cmd(old: str, new: str, packets_dir: str, output: str) -> None:
+    """Compare two decision packets."""
+    packets_path = Path(packets_dir)
+
+    def load_packet_by_id_or_path(packet_ref: str) -> Optional[DecisionPacket]:
+        """Load packet by ID or direct path."""
+        # Try as direct path first
+        if Path(packet_ref).exists():
+            return load_packet(packet_ref)
+
+        # Search in packets directory
+        if not packets_path.exists():
+            return None
+
+        for jsonl_file in packets_path.glob("*.jsonl"):
+            with jsonl_file.open("r") as f:
+                for line in f:
+                    if line.strip():
+                        data = json.loads(line)
+                        if data.get("packet_id", "").startswith(packet_ref):
+                            return DecisionPacket.from_dict(data)
+        return None
+
+    try:
+        old_packet = load_packet_by_id_or_path(old)
+        new_packet = load_packet_by_id_or_path(new)
+
+        if old_packet is None:
+            if output == "json":
+                click.echo(json.dumps({"error": f"Old packet not found: {old}"}))
+            else:
+                print_error(f"Old packet not found: {old}")
+            sys.exit(2)
+
+        if new_packet is None:
+            if output == "json":
+                click.echo(json.dumps({"error": f"New packet not found: {new}"}))
+            else:
+                print_error(f"New packet not found: {new}")
+            sys.exit(2)
+
+        # Compare packets using truthlink
+        comparison = truthlink.compare(old_packet, new_packet)
+
+        # Determine classification
+        health_delta = comparison.get("health_score_delta", 0)
+        savings_delta = comparison.get("savings_delta", 0)
+
+        if health_delta > 0 or savings_delta > 0:
+            classification = "IMPROVEMENT"
+            class_icon = "⬆"
+        elif health_delta < 0 or savings_delta < 0:
+            classification = "REGRESSION"
+            class_icon = "⬇"
+        else:
+            classification = "NEUTRAL"
+            class_icon = "→"
+
+        is_regression = classification == "REGRESSION"
+
+        if output == "json":
+            result = {
+                "old_packet_id": old_packet.packet_id,
+                "new_packet_id": new_packet.packet_id,
+                "classification": classification,
+                "comparison": comparison,
+            }
+            click.echo(json.dumps(result, indent=2))
+        else:
+            # Rich output
+            old_ts = old_packet.timestamp[:10] if old_packet.timestamp else "unknown"
+            new_ts = new_packet.timestamp[:10] if new_packet.timestamp else "unknown"
+
+            lines = [
+                f"Old: {old_packet.packet_id[:8]} ({old_ts})",
+                f"New: {new_packet.packet_id[:8]} ({new_ts})",
+                f"Classification: {classification} {class_icon}",
+                "",
+            ]
+
+            # Metrics comparison
+            old_health = old_packet.health_score
+            new_health = new_packet.health_score
+            health_pct = ((new_health - old_health) / max(old_health, 1)) * 100
+            health_icon = "⬆" if health_delta > 0 else ("⬇" if health_delta < 0 else "→")
+            lines.append(f"health_score:     {old_health} → {new_health}      {health_pct:+.1f}%  {health_icon}")
+
+            old_savings = old_packet.metrics.annual_savings
+            new_savings = new_packet.metrics.annual_savings
+            savings_pct = ((new_savings - old_savings) / max(old_savings, 1)) * 100
+            savings_icon = "⬆" if savings_delta > 0 else ("⬇" if savings_delta < 0 else "→")
+            lines.append(
+                f"annual_savings:   {_format_savings(old_savings)} → {_format_savings(new_savings)}  "
+                f"{savings_pct:+.1f}%  {savings_icon}"
+            )
+
+            old_breach = old_packet.metrics.slo_breach_rate * 100
+            new_breach = new_packet.metrics.slo_breach_rate * 100
+            breach_pct = new_breach - old_breach
+            breach_icon = "⬆" if breach_pct < 0 else ("⬇" if breach_pct > 0 else "→")
+            lines.append(f"slo_breach_rate:  {old_breach:.2f}% → {new_breach:.2f}%  {breach_pct:+.1f}%  {breach_icon}")
+
+            old_exploit = old_packet.exploit_coverage * 100
+            new_exploit = new_packet.exploit_coverage * 100
+            exploit_pct = new_exploit - old_exploit
+            exploit_icon = "⬆" if exploit_pct > 0 else ("⬇" if exploit_pct < 0 else "→")
+            lines.append(f"exploit_coverage: {old_exploit:.0f}% → {new_exploit:.0f}%    {exploit_pct:+.1f}%  {exploit_icon}")
+
+            lines.append("")
+
+            # Pattern changes
+            patterns_added = comparison.get("patterns_added", [])
+            patterns_removed = comparison.get("patterns_removed", [])
+            lines.append(f"Patterns: +{len(patterns_added)} added, -{len(patterns_removed)} removed")
+            if patterns_added:
+                lines.append(f"  Added: {', '.join(patterns_added[:3])}")
+
+            content = "\n".join(lines)
+            border_color = "red" if is_regression else "green"
+            panel = Panel(
+                content,
+                title="[bold]Packet Comparison[/bold]",
+                border_style=border_color,
+            )
+            console.print(panel)
+
+            if is_regression:
+                console.print("[yellow]Warning: Regression detected[/yellow]")
+                sys.exit(1)
+            else:
+                console.print("Recommendation: Safe to promote to wider fleet")
+                print_next(f"proof fleet-view --highlight {new_packet.packet_id[:8]}")
+
+    except Exception as e:
+        if output == "json":
+            click.echo(json.dumps({"error": str(e)}))
+        else:
+            print_error(f"Comparison failed: {e}")
+        sys.exit(2)
+
+
+# --- fleet-view ---
+
+@v8.command("fleet-view")
+@click.option("--packets-dir", default="data/packets/", help="Packets directory")
+@click.option("--highlight", "-h", "highlight_id", help="Highlight deployment ID")
+@click.option("--diagnose", is_flag=True, help="Run fleet health check")
+@click.option("--export", "-e", "export_path", type=click.Path(), help="Export graph JSON")
+@click.option("--output", "-o", type=click.Choice(["rich", "json"]), default="rich")
+def fleet_view_cmd(
+    packets_dir: str,
+    highlight_id: Optional[str],
+    diagnose: bool,
+    export_path: Optional[str],
+    output: str,
+) -> None:
+    """Display fleet topology and health overview."""
+    packets_path = Path(packets_dir)
+
+    if not packets_path.exists():
+        if output == "json":
+            click.echo(json.dumps({"error": "No packets directory found"}))
+        else:
+            print_error(f"Packets directory not found: {packets_dir}")
+        sys.exit(2)
+
+    try:
+        # Load all packets
+        packets: List[DecisionPacket] = []
+        for jsonl_file in packets_path.glob("*.jsonl"):
+            with jsonl_file.open("r") as f:
+                for line in f:
+                    if line.strip():
+                        try:
+                            data = json.loads(line)
+                            packets.append(DecisionPacket.from_dict(data))
+                        except (json.JSONDecodeError, ValueError):
+                            continue
+
+        if not packets:
+            if output == "json":
+                click.echo(json.dumps({"error": "No packets found"}))
+            else:
+                print_error("No packets found in directory")
+            sys.exit(2)
+
+        # Build deployment graph
+        graph = mesh_view_v3.build(packets)
+        fleet_metrics = mesh_view_v3.compute_fleet_metrics(graph)
+        clusters = graph.find_clusters(min_similarity=0.3)
+
+        # Run diagnosis if requested
+        diagnosis = None
+        if diagnose:
+            diagnosis = mesh_view_v3.diagnose(graph)
+
+        # Export if requested
+        if export_path:
+            mesh_view_v3.save(graph, export_path)
+
+        if output == "json":
+            result = {
+                "total_deployments": fleet_metrics.total_deployments,
+                "active_deployments": fleet_metrics.active_deployments,
+                "stale_deployments": fleet_metrics.stale_deployments,
+                "total_annual_savings": fleet_metrics.total_annual_savings,
+                "avg_health_score": fleet_metrics.avg_health_score,
+                "fleet_cohesion": fleet_metrics.fleet_cohesion,
+                "clusters": [
+                    {
+                        "cluster_id": c.cluster_id,
+                        "size": len(c.deployment_ids),
+                        "avg_similarity": c.avg_similarity,
+                    }
+                    for c in clusters
+                ],
+                "diagnosis": diagnosis.to_dict() if diagnosis else None,
+            }
+            click.echo(json.dumps(result, indent=2))
+        else:
+            # Rich output
+            lines = [
+                f"Deployments: {fleet_metrics.active_deployments} active, {fleet_metrics.stale_deployments} stale",
+                f"Total Savings: {_format_savings(fleet_metrics.total_annual_savings)}/year",
+                f"Avg Health: {fleet_metrics.avg_health_score:.0f}/100      Fleet Cohesion: {fleet_metrics.fleet_cohesion:.2f}",
+                "",
+                "CLUSTERS",
+            ]
+
+            # Display clusters
+            for cluster in clusters[:4]:
+                # Get primary hook from cluster
+                nodes = [graph.nodes.get(did) for did in cluster.deployment_ids if did in graph.nodes]
+                primary_hook = nodes[0].hook.title() if nodes else "Unknown"
+                overlap_pct = cluster.avg_similarity * 100
+
+                bar_filled = int(overlap_pct / 100 * 16)
+                bar_empty = 16 - bar_filled
+                bar = "█" * bar_filled + "░" * bar_empty
+
+                lines.append(f"  {primary_hook} ({len(cluster.deployment_ids)})     {bar} {overlap_pct:.0f}% overlap")
+
+            # Find outliers
+            outliers = graph.find_outliers(threshold=0.3)
+            if outliers:
+                lines.append(f"  Outliers ({len(outliers)})  {'░' * 16} <30% similarity")
+
+            lines.append("")
+            lines.append("ACTIONS NEEDED")
+
+            # Find stale nodes
+            stale_nodes = [n for n in graph.nodes.values() if n.is_stale]
+            for node in stale_nodes[:2]:
+                lines.append(f"  • {node.deployment_id} stale")
+
+            # Find nodes missing exploit patterns
+            for node in list(graph.nodes.values())[:5]:
+                if not node.exploit_patterns:
+                    lines.append(f"  • {node.deployment_id} missing exploit patterns")
+                    break
+
+            # Suggest pattern propagation
+            if clusters and len(clusters) >= 2:
+                from_cluster = clusters[0]
+                to_cluster = clusters[1]
+                if from_cluster.patterns_in_common:
+                    pattern = list(from_cluster.patterns_in_common)[0]
+                    from_hook = graph.nodes[from_cluster.deployment_ids[0]].hook if from_cluster.deployment_ids else "?"
+                    to_hook = graph.nodes[to_cluster.deployment_ids[0]].hook if to_cluster.deployment_ids else "?"
+                    lines.append(f"  • {pattern} ready for {to_hook.title()} (works in {from_hook.title()})")
+
+            content = "\n".join(lines)
+
+            has_issues = fleet_metrics.stale_deployments > 0 or (diagnosis and not diagnosis.is_healthy)
+            border_color = "yellow" if has_issues else "green"
+
+            panel = Panel(
+                content,
+                title="[bold]Fleet Overview[/bold]",
+                border_style=border_color,
+            )
+            console.print(panel)
+
+            if diagnosis:
+                if not diagnosis.is_healthy:
+                    console.print("\n[bold red]Fleet Health Issues:[/bold red]")
+                    for issue in diagnosis.issues:
+                        print_error(issue)
+                    for warning in diagnosis.warnings[:3]:
+                        print_warning(warning)
+                    sys.exit(1)
+                else:
+                    print_success("Fleet health check passed")
+
+            if stale_nodes:
+                print_next(f"proof build-packet -d {stale_nodes[0].deployment_id}")
+            else:
+                console.print("\n[dim]All deployments up to date[/dim]")
+
+    except Exception as e:
+        if output == "json":
+            click.echo(json.dumps({"error": str(e)}))
+        else:
+            print_error(f"Fleet view failed: {e}")
+        sys.exit(2)
+
+
+# --- v8 CLI entry point ---
+
+def v8_main() -> int:
+    """Entry point for v8 Click CLI."""
+    try:
+        v8(standalone_mode=False)
+        return 0
+    except click.ClickException as e:
+        e.show()
+        return 2
+    except SystemExit as e:
+        return e.code if isinstance(e.code, int) else 0
