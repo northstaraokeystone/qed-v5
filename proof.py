@@ -1027,8 +1027,11 @@ def merge_configs_cmd(parent: str, child: str, save: Optional[str], auto_repair:
       2 = fatal error
     """
     try:
-        parent_config = config_schema.load(parent, validate=True, strict=False)
-        child_config = config_schema.load(child, validate=True, strict=False)
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UserWarning)
+            parent_config = config_schema.load(parent, validate=True, strict=False)
+            child_config = config_schema.load(child, validate=True, strict=False)
 
         result = merge_rules.merge(
             parent_config,
