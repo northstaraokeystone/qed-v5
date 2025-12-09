@@ -21,6 +21,7 @@ from typing import Any, Dict, List
 import numpy as np
 
 import qed
+
 from shared_anomalies import get_patterns_for_hook
 
 # -----------------------------------------------------------------------------
