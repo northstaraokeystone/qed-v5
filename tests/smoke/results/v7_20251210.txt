@@ -1,0 +1,6 @@
+=== v7 Smoke Tests ===
+H1: ClarityCleanReceipt import... PASS
+H2: edge_lab_v2 exports run_pattern_sims... PASS
+H3: shared_anomalies.jsonl exists... PASS
+H4: shared_anomalies.jsonl schema validation... PASS
+=== PASS: v7 smoke tests (4/4) ===

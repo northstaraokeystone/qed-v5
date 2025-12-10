@@ -1,0 +1,13 @@
+=== v10 Smoke Tests ===
+H1: system_entropy() returns float... PASS
+H2: agent_fitness() returns float... PASS
+H3: integrity.py exports hunt()... PASS
+H4: remediate.py exports remediate()... PASS
+H5: unified_loop.py exports run_cycle()... PASS
+H6: HUNTER latency check... SKIP (covered in pytest)
+H7: SHEPHERD confidence... SKIP (covered in pytest)
+H8: RECEIPT_SCHEMA in all modules... PASS
+H9: Agent state from differential... SKIP (covered in pytest)
+H10: Empty data/differentials... SKIP (covered in pytest)
+H11: system_entropy uniform distribution... PASS
+=== PASS: v10 smoke tests (8/11, 3 skipped) ===

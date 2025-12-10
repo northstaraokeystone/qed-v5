@@ -1,0 +1,7 @@
+=== v9 Smoke Tests ===
+H1: portfolio_aggregator imports... PASS
+H2: causal_graph imports... PASS
+H3: event_stream imports... PASS
+H4: causal_graph has trace functions... PASS
+H5: event_stream has append/query... PASS
+=== PASS: v9 smoke tests (5/5) ===
