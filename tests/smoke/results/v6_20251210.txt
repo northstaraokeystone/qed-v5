@@ -1,0 +1,7 @@
+=== v6 Smoke Tests ===
+H1: QEDReceipt import... PASS
+H2: edge_lab_v1.py functional... PASS
+H3: mesh_view_v1.py functional... PASS
+H4: sympy_constraints.py imports... PASS
+H5: QEDReceipt has required fields... PASS
+=== PASS: v6 smoke tests (5/5) ===
