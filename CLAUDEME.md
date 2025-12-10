@@ -1,350 +1,622 @@
-Section 1: Core Principles
-•	Receipts-Over-Rhetoric: Every operation, decision, and model call emits machine-readable receipts (hashes, configs, timestamps, human reason). No receipt ⇒ not real. Single JSON ledger = SSOT across projects.
-•	First-Principles Glyph Decomposition: Any feature decomposes to primitives (bits, time, tokens, energy, cash). Rebuild from zero with minimal components. No dependency survives without a written physical/causal justification.
-•	48h Ship Rule: Logic-first spec, CLI prototype in 2h, usable MVP in 24h, hardened v1 in 48h or kill. Everything enters a 7-day red-loop for simplification, cost cuts, and failure harvesting.
-•	Swarm-Forked Reason: Distributed agents plan, critique, and fuse answers via causal graphs and uncertainty metrics. Predictive entanglement and continual adaptation always run offline or in shadow, never on the hot path.
-•	Bias-Preemptive Ethics: Every pipeline tracks disparity, accessibility, and privacy receipts. Bias budgets and a11y baselines are SLOs, not aspirations. Any disparity breach auto-halts and pages a human gatekeeper.
-Section 2: Build Standards (logic, no FE, <48h flow)
-2.1 Surfaces & I/O
-•	Only backends and glyphs: Rust/TS binaries, CLI tools, daemons, JSON/JSONL APIs, and signed AnchorGlyphs. No HTML, CSS, mobile shells, or visual dashboards. Observability is logs, metrics, traces, and receipts.
-•	All user interaction is text or programmatic: stdin/stdout, gRPC/HTTP JSON, or file-based contracts. No pixels.
-2.2 Canonical 48h Flow
-•	T0–T+2h (Logic Skeleton):
-o	Write the invariant spec: inputs, outputs, receipts, SLOs, stoprules, and rollback story.
-o	Define the ledger schema, receipt types, and hash strategy (Merkle/BLAKE3).
-o	Stub a CLI and a single service entrypoint that returns hardcoded AnchorGlyphs with valid receipts.
-•	T+2h–T+24h (MVP Backend):
-o	Implement the minimal working pipeline: ingest → process → prove → emit glyph.
-o	Wire retrieval/compute with strict budgets; no dynamic learning or fancy routing yet.
-o	Add tests that replay representative payloads and verify receipts, hashes, and SLO envelopes.
-•	T+24h–T+48h (Hardening & Swarm Loop):
-o	Add anomaly detection, bias checks, and causal entanglement summaries as offline or shadow processes.
-o	Lock telemetry + SLO watchdog (latency, error rate, disparity, forgetting).
-o	Run swarm review (agents + one human) on receipts; either ship behind a flag or delete. No zombies.
-2.3 Engines & Roles (project-agnostic)
-•	Provenance Engine: deterministic ingest, multi-tenant ledgers, Merkle anchoring, compaction with invariants, anomaly receipts, reversible auto-fixes under policy.
-•	Reasoning Engine: retrieval, evidence scoring, dialectical briefs, decision-health metrics, uncertainty-driven expansion, bias-aware selection.
-•	Fusion Engine: attaches receipts to claims, checks consistency, halts on mismatch, emits signed DecisionGlyphs.
-•	All projects implement these three engines, even if scoped down. Naming is free; semantics are not.
-2.4 Constraints & StepLock
-•	StepLock: no engine progresses a feature from shadow → beta → default without receipts that meet SLOs and stoprules.
-•	No hotpath learning: all training, threshold tuning, routing optimization, and bias correction run offline or in shadow with receipts and revert plans.
-•	Multi-tenant by default: tenant_id everywhere, region locks enforced, redact-before-hash standard.
-•	Every change is DIFFONLY: patch-level entries in the ledger, never silent state mutation.
-Section 3: Tech Stack (PhD backend, simple tools)
-3.1 Languages & Runtimes
-•	Rust: hotpath services, cryptographic operations, low-latency retrieval, streaming pipelines.
-•	TypeScript/Node: CLIs, adapters, glue services, small daemons.
-•	Python: offline research, SBSD training, evaluation tools; never in the request hotpath.
-•	Shell: ops runbooks as executable scripts with receipts.
-3.2 Storage, Queues, Caches
-•	Relational core: PostgreSQL as canonical state and ledger store; strict schemas, migrations with receipts.
-•	Vectors: pgvector or FAISS/HNSW shards keyed by canonical IDs; sharding via hash(id) % N.
-•	Queues: RabbitMQ/NATS for ingest and background jobs; Redis only for labeled-cache use, never as the audit queue until shard labels + manifest receipts exist.
-•	Blobs: S3-compatible for documents, models, glyph archives; lifecycle policies enforced via storage receipts.
-3.3 Crypto, Provenance & Glyphs
-•	Hashes: SHA256 + BLAKE3 dual-hash on canonicalized payloads and configs; divergences trigger compaction or rehydrate-and-stop.
-•	Merkle trees for batches of events, docs, or decisions; roots anchored with anchor_receipts and verifiable proof paths.
-•	AnchorGlyph: canonical zipped artifact: {config, code_hashes, dataset_hashes, receipts.jsonl, metrics, signature}. All deployments and key decisions are represented as AnchorGlyphs.
-3.4 Algorithms & Engines
-•	Retrieval: normalized embeddings + cosine similarity; MMR for diversity; hierarchical indices (sentence → chunk → section) with a query-complexity router (atomic, focused, broad, comparative).
-•	SBSD (Self-Supervised Boundary Detection): offline, deterministic- seed chunking trained on structured corpora; emits chunking_receipts with model hashes and threshold stats.
-•	Causal Entanglement (PCE): graphs linking intents, operations, receipts, and impacts; ensures transitivity SLO (entanglement quality) ≥0.92 where enabled.
-•	Uncertainty-Guided Continual Adaptation (UGCA): offline routines that adjust thresholds, routing, and k-values using uncertainty and drift; forgetting SLO <1%.
-•	Bias-Preemptive Causal Dynamics (BPCD): monitors disparate impact and a11y; if disparity >0.5% or a11y fails, emit bias_receipt and auto-halt.
-•	Verifiable Impact Harness (VIH): evaluation framework that computes decision-health, cost, latency, and fairness; caps latency inflation to ≤1.2× when new logic is enabled.
-3.5 Swarm & Agents
-•	Agents are JSON-in/JSON-out workers with narrow roles: Planner, Retriever, CounterEvidence, Optimizer, Auditor, Anchorer, Packetizer, Coach.
-•	They communicate only through the ledger and receipts; no hidden state, no direct RPC mesh.
-•	Swarm consensus uses weighted voting across agents + VIH metrics to decide whether to route to cloud models, local models, or cached decisions.
-3.6 Simplicity Rule
-•	For any feature: one crate/binary/module, one glyph type, one swarm entrypoint.
-•	If an engineer cannot explain the math and the invariants on a whiteboard in 5 minutes, the design is invalid.
-Section 4: Elon-Matthew Fusion
-Tesla Pattern (7-Day Red Loop)
-Each system runs on automotive-grade iteration: after the initial 48h ship, every backend enters a 7-day upgrade loop. Weekly, we refactor for part-count reduction (dependencies), energy and compute efficiency, and failure harvesting. OTA-style deploys map to flagged, ledgered rollouts with immediate rollback paths. Every diff must show measured cost, reliability, or capability gains, never just “more features”.
-SpaceX Pattern (Launch Manifests & Abort Logic)
-Every deploy is treated as a launch: pre-flight checklists walk through receipts, tests, SLO projections, and rollback rehearsals. The launch manifest is an AnchorGlyph combining code hashes, config, Merkle roots, and expected metrics ranges. Static fire = full-fidelity dry run in staging. Abort conditions (unexpected divergence, metric overshoot, bias breach) must be both automatic and reversible, treating failure as a reusable stage, not debris.
-xAI Pattern (Swarm Consensus & Grok Loops)
-Any nontrivial decision flows through a swarm: multiple agents propose plans, critiques, and counterevidence. Dialectical briefs expose PRO/CON, coverage gaps, and reasoning entropy. A consensus harness aggregates via causal graphs, uncertainty scores, and bias checks, then records an explicit “why this path” in the ledger. The swarm isn’t decoration; it is the safety rail against overconfident single-model hallucination.
-Boring Company Pattern (Self-Healing Tunnels)
-Data paths are tunnels: minimally curved, heavily instrumented, and redundant. Every critical pipeline has a parallel fallback tunnel and repair logic. Anomalies trigger automated traffic re-routing, rehydration from the ledger, and compaction audits. The system prefers boring, predictable reliability over cleverness; chaos lives only in shadow experiments clearly cordoned with DragonChaos flags and receipts.
-Neuralink Pattern (Intent-to-Action Proofs)
-User intent (a query, command, or policy change) is captured as an IntentGlyph with explicit goals, constraints, and risk appetite. The system traces a causal path from this intent through retrieval, reasoning, and actuation, emitting receipts and uncertainty at each hop. Every act must be provably aligned to the initiating IntentGlyph or get blocked at the human gate.
-Starlink Pattern (Orbital Integrity Chains)
-Every node (service, shard, region) behaves like a satellite: independently observable, replaceable, and part of a mesh. Health, latency, and entanglement metrics are tracked as orbital parameters; collisions (resource contention, deadlocks, schema drift) are detected early via divergence maps and resolved via controlled deorbit (graceful shutdown, migration, or shard splitting). Global behavior emerges from local receipts, never from a single central brain.
-Cross-Empire Loop (Empire Entanglement)
-The universal loop is: IntentGlyph → first-principles glyph decomposition → swarm planning → 2h CLI prototype → 24h MVP with receipts → 48h hardened ship → 7-day Tesla red-loop refinement → SpaceX launch-style deploy → xAI swarm audits for drift and bias → Boring self-healing wiring → Neuralink intent verification → Starlink mesh tuning. Every project hooks into this loop or is not a Matthew Collective project.
-Section 5: Verification & Shipping (glyphs, proofs, unfinished manifesto)
-5.1 Glyph Taxonomy
-•	IntentGlyph: human or system goal, constraints, risk bounds, and ownership.
-•	EvidenceGlyph: snapshot of retrieval state, indices, SBSD parameters, and entanglement scores at query time.
-•	DecisionGlyph: final brief, decision-health metrics, dialiectical record, and attached receipts from provenance and fusion engines.
-•	AnchorGlyph: deployable artifact connecting code, configs, data hashes, SLOs, and DecisionGlyph histories.
-All glyphs must be signed, timestamped, and addressable via Merkle anchors.
-5.2 Receipts & Proofs
-Core receipts, available to every project:
-•	ingest_receipt {ts, tenant_id, payload_hash, redactions, source_type}
-•	anchor_receipt {merkle_root, hash_algos, batch_size, proof_path?}
-•	anomaly_receipt {metric, baseline, delta, classification, action}
-•	compaction_receipt {input_span, output_span, counts, sums, hash_continuity}
-•	routing_receipt {query_complexity, chosen_index_level, k, budget, reason}
-•	bias_receipt {groups, disparity, thresholds, mitigation_action}
-•	dh_receipt {strength, coverage, efficiency, thresholds, policy_diffs}
-•	impact_receipt {pre_metrics, post_metrics, cost, VIH_decision}
-Verifiers are simple: recompute hashes, recompute Merkle branches, re-run deterministic metrics, compare to receipts. Any mismatch triggers StepLock halt and an investigation glyph.
-5.3 SLOs, Stoprules & Halts
-•	Latency SLOs: query/brief/verify/ingest each have p95 targets; any feature raising them above agreed ceilings must show VIH-positive impact or be disabled.
-•	Entanglement SLO: predictive causal entanglement quality ≥0.92 where used.
-•	Forgetting SLO: UGCA-driven adaptation must keep catastrophic forgetting <1%.
-•	Bias SLO: BPCD keeps disparity <0.5% and a11y receipts green; breach ⇒ auto-halt.
-•	Impact SLO: any optimization must keep VIH latency inflation ≤1.2× versus baseline at equal or stronger decision-health.
-Stoprules (global):
-•	If acceptance <95% or strength/coverage drop below policy thresholds ⇒ rollback.
-•	If fusion match (claims ↔ receipts) <0.999 ⇒ immediate halt and escalation within 4 hours.
-•	If any unreceipted side-effect is detected ⇒ quarantine the change and rehydrate from last good AnchorGlyph.
-5.4 Shipping Protocol
-•	No deploy without an AnchorGlyph referencing: code hashes, config diffs, dataset hashes, receipts.jsonl, and SLO deltas.
-•	Every project defines a CLI shipping script (ship_*) that: builds, runs tests, replays golden traces, verifies glyph hashes, and writes shipping_receipt entries.
-•	Deploys are canary-first, flag-gated, and fully reversible with a single command that restores prior AnchorGlyph state.
-5.5 The Unfinished Manifesto
-Every project ledger ends with an UnfinishedManifesto block:
-•	open_questions: unknowns, painful tradeoffs, ugly hacks.
-•	entropy_hooks: deliberate DragonChaos slots for future experiments, off by default and receipted when used.
-•	death_criteria: conditions under which the system should be deleted instead of patched.
-This manifesto is never considered “done”; it is the living contract that keeps Matthew-style glyph chaos and Elon-style physical discipline entangled. Any engineer can propose edits, but only proofs—never vibes—can merge.
+# CLAUDEME v3.1 — Self-Describing Execution Standard
 
-Section 1: Core Principles
-•	Receipts-Over-Rhetoric: Every operation, decision, and model call emits machine-readable receipts (hashes, configs, timestamps, human reason). No receipt ⇒ not real. Single JSON ledger = SSOT across projects.
-•	First-Principles Glyph Decomposition: Any feature decomposes to primitives (bits, time, tokens, energy, cash). Rebuild from zero with minimal components. No dependency survives without a written physical/causal justification.
-•	48h Ship Rule: Logic-first spec, CLI prototype in 2h, usable MVP in 24h, hardened v1 in 48h or kill. Everything enters a 7-day red-loop for simplification, cost cuts, and failure harvesting.
-•	Swarm-Forked Reason: Distributed agents plan, critique, and fuse answers via causal graphs and uncertainty metrics. Predictive entanglement and continual adaptation always run offline or in shadow, never on the hot path.
-•	Bias-Preemptive Ethics: Every pipeline tracks disparity, accessibility, and privacy receipts. Bias budgets and a11y baselines are SLOs, not aspirations. Any disparity breach auto-halts and pages a human gatekeeper.
-Section 2: Build Standards (logic, no FE, <48h flow)
-2.1 Surfaces & I/O
-•	Only backends and glyphs: Rust/TS binaries, CLI tools, daemons, JSON/JSONL APIs, and signed AnchorGlyphs. No HTML, CSS, mobile shells, or visual dashboards. Observability is logs, metrics, traces, and receipts.
-•	All user interaction is text or programmatic: stdin/stdout, gRPC/HTTP JSON, or file-based contracts. No pixels.
-2.2 Canonical 48h Flow
-•	T0–T+2h (Logic Skeleton):
-o	Write the invariant spec: inputs, outputs, receipts, SLOs, stoprules, and rollback story.
-o	Define the ledger schema, receipt types, and hash strategy (Merkle/BLAKE3).
-o	Stub a CLI and a single service entrypoint that returns hardcoded AnchorGlyphs with valid receipts.
-•	T+2h–T+24h (MVP Backend):
-o	Implement the minimal working pipeline: ingest → process → prove → emit glyph.
-o	Wire retrieval/compute with strict budgets; no dynamic learning or fancy routing yet.
-o	Add tests that replay representative payloads and verify receipts, hashes, and SLO envelopes.
-•	T+24h–T+48h (Hardening & Swarm Loop):
-o	Add anomaly detection, bias checks, and causal entanglement summaries as offline or shadow processes.
-o	Lock telemetry + SLO watchdog (latency, error rate, disparity, forgetting).
-o	Run swarm review (agents + one human) on receipts; either ship behind a flag or delete. No zombies.
-2.3 Engines & Roles (project-agnostic)
-•	Provenance Engine: deterministic ingest, multi-tenant ledgers, Merkle anchoring, compaction with invariants, anomaly receipts, reversible auto-fixes under policy.
-•	Reasoning Engine: retrieval, evidence scoring, dialectical briefs, decision-health metrics, uncertainty-driven expansion, bias-aware selection.
-•	Fusion Engine: attaches receipts to claims, checks consistency, halts on mismatch, emits signed DecisionGlyphs.
-•	All projects implement these three engines, even if scoped down. Naming is free; semantics are not.
-2.4 Constraints & StepLock
-•	StepLock: no engine progresses a feature from shadow → beta → default without receipts that meet SLOs and stoprules.
-•	No hotpath learning: all training, threshold tuning, routing optimization, and bias correction run offline or in shadow with receipts and revert plans.
-•	Multi-tenant by default: tenant_id everywhere, region locks enforced, redact-before-hash standard.
-•	Every change is DIFFONLY: patch-level entries in the ledger, never silent state mutation.
-Section 3: Tech Stack (PhD backend, simple tools)
-3.1 Languages & Runtimes
-•	Rust: hotpath services, cryptographic operations, low-latency retrieval, streaming pipelines.
-•	TypeScript/Node: CLIs, adapters, glue services, small daemons.
-•	Python: offline research, SBSD training, evaluation tools; never in the request hotpath.
-•	Shell: ops runbooks as executable scripts with receipts.
-3.2 Storage, Queues, Caches
-•	Relational core: PostgreSQL as canonical state and ledger store; strict schemas, migrations with receipts.
-•	Vectors: pgvector or FAISS/HNSW shards keyed by canonical IDs; sharding via hash(id) % N.
-•	Queues: RabbitMQ/NATS for ingest and background jobs; Redis only for labeled-cache use, never as the audit queue until shard labels + manifest receipts exist.
-•	Blobs: S3-compatible for documents, models, glyph archives; lifecycle policies enforced via storage receipts.
-3.3 Crypto, Provenance & Glyphs
-•	Hashes: SHA256 + BLAKE3 dual-hash on canonicalized payloads and configs; divergences trigger compaction or rehydrate-and-stop.
-•	Merkle trees for batches of events, docs, or decisions; roots anchored with anchor_receipts and verifiable proof paths.
-•	AnchorGlyph: canonical zipped artifact: {config, code_hashes, dataset_hashes, receipts.jsonl, metrics, signature}. All deployments and key decisions are represented as AnchorGlyphs.
-3.4 Algorithms & Engines
-•	Retrieval: normalized embeddings + cosine similarity; MMR for diversity; hierarchical indices (sentence → chunk → section) with a query-complexity router (atomic, focused, broad, comparative).
-•	SBSD (Self-Supervised Boundary Detection): offline, deterministic- seed chunking trained on structured corpora; emits chunking_receipts with model hashes and threshold stats.
-•	Causal Entanglement (PCE): graphs linking intents, operations, receipts, and impacts; ensures transitivity SLO (entanglement quality) ≥0.92 where enabled.
-•	Uncertainty-Guided Continual Adaptation (UGCA): offline routines that adjust thresholds, routing, and k-values using uncertainty and drift; forgetting SLO <1%.
-•	Bias-Preemptive Causal Dynamics (BPCD): monitors disparate impact and a11y; if disparity >0.5% or a11y fails, emit bias_receipt and auto-halt.
-•	Verifiable Impact Harness (VIH): evaluation framework that computes decision-health, cost, latency, and fairness; caps latency inflation to ≤1.2× when new logic is enabled.
-3.5 Swarm & Agents
-•	Agents are JSON-in/JSON-out workers with narrow roles: Planner, Retriever, CounterEvidence, Optimizer, Auditor, Anchorer, Packetizer, Coach.
-•	They communicate only through the ledger and receipts; no hidden state, no direct RPC mesh.
-•	Swarm consensus uses weighted voting across agents + VIH metrics to decide whether to route to cloud models, local models, or cached decisions.
-3.6 Simplicity Rule
-•	For any feature: one crate/binary/module, one glyph type, one swarm entrypoint.
-•	If an engineer cannot explain the math and the invariants on a whiteboard in 5 minutes, the design is invalid.
-Section 4: Elon-Matthew Fusion
-Tesla Pattern (7-Day Red Loop)
-Each system runs on automotive-grade iteration: after the initial 48h ship, every backend enters a 7-day upgrade loop. Weekly, we refactor for part-count reduction (dependencies), energy and compute efficiency, and failure harvesting. OTA-style deploys map to flagged, ledgered rollouts with immediate rollback paths. Every diff must show measured cost, reliability, or capability gains, never just “more features”.
-SpaceX Pattern (Launch Manifests & Abort Logic)
-Every deploy is treated as a launch: pre-flight checklists walk through receipts, tests, SLO projections, and rollback rehearsals. The launch manifest is an AnchorGlyph combining code hashes, config, Merkle roots, and expected metrics ranges. Static fire = full-fidelity dry run in staging. Abort conditions (unexpected divergence, metric overshoot, bias breach) must be both automatic and reversible, treating failure as a reusable stage, not debris.
-xAI Pattern (Swarm Consensus & Grok Loops)
-Any nontrivial decision flows through a swarm: multiple agents propose plans, critiques, and counterevidence. Dialectical briefs expose PRO/CON, coverage gaps, and reasoning entropy. A consensus harness aggregates via causal graphs, uncertainty scores, and bias checks, then records an explicit “why this path” in the ledger. The swarm isn’t decoration; it is the safety rail against overconfident single-model hallucination.
-Boring Company Pattern (Self-Healing Tunnels)
-Data paths are tunnels: minimally curved, heavily instrumented, and redundant. Every critical pipeline has a parallel fallback tunnel and repair logic. Anomalies trigger automated traffic re-routing, rehydration from the ledger, and compaction audits. The system prefers boring, predictable reliability over cleverness; chaos lives only in shadow experiments clearly cordoned with DragonChaos flags and receipts.
-Neuralink Pattern (Intent-to-Action Proofs)
-User intent (a query, command, or policy change) is captured as an IntentGlyph with explicit goals, constraints, and risk appetite. The system traces a causal path from this intent through retrieval, reasoning, and actuation, emitting receipts and uncertainty at each hop. Every act must be provably aligned to the initiating IntentGlyph or get blocked at the human gate.
-Starlink Pattern (Orbital Integrity Chains)
-Every node (service, shard, region) behaves like a satellite: independently observable, replaceable, and part of a mesh. Health, latency, and entanglement metrics are tracked as orbital parameters; collisions (resource contention, deadlocks, schema drift) are detected early via divergence maps and resolved via controlled deorbit (graceful shutdown, migration, or shard splitting). Global behavior emerges from local receipts, never from a single central brain.
-Cross-Empire Loop (Empire Entanglement)
-The universal loop is: IntentGlyph → first-principles glyph decomposition → swarm planning → 2h CLI prototype → 24h MVP with receipts → 48h hardened ship → 7-day Tesla red-loop refinement → SpaceX launch-style deploy → xAI swarm audits for drift and bias → Boring self-healing wiring → Neuralink intent verification → Starlink mesh tuning. Every project hooks into this loop or is not a Matthew Collective project.
-Section 5: Verification & Shipping (glyphs, proofs, unfinished manifesto)
-5.1 Glyph Taxonomy
-•	IntentGlyph: human or system goal, constraints, risk bounds, and ownership.
-•	EvidenceGlyph: snapshot of retrieval state, indices, SBSD parameters, and entanglement scores at query time.
-•	DecisionGlyph: final brief, decision-health metrics, dialiectical record, and attached receipts from provenance and fusion engines.
-•	AnchorGlyph: deployable artifact connecting code, configs, data hashes, SLOs, and DecisionGlyph histories.
-All glyphs must be signed, timestamped, and addressable via Merkle anchors.
-5.2 Receipts & Proofs
-Core receipts, available to every project:
-•	ingest_receipt {ts, tenant_id, payload_hash, redactions, source_type}
-•	anchor_receipt {merkle_root, hash_algos, batch_size, proof_path?}
-•	anomaly_receipt {metric, baseline, delta, classification, action}
-•	compaction_receipt {input_span, output_span, counts, sums, hash_continuity}
-•	routing_receipt {query_complexity, chosen_index_level, k, budget, reason}
-•	bias_receipt {groups, disparity, thresholds, mitigation_action}
-•	dh_receipt {strength, coverage, efficiency, thresholds, policy_diffs}
-•	impact_receipt {pre_metrics, post_metrics, cost, VIH_decision}
-Verifiers are simple: recompute hashes, recompute Merkle branches, re-run deterministic metrics, compare to receipts. Any mismatch triggers StepLock halt and an investigation glyph.
-5.3 SLOs, Stoprules & Halts
-•	Latency SLOs: query/brief/verify/ingest each have p95 targets; any feature raising them above agreed ceilings must show VIH-positive impact or be disabled.
-•	Entanglement SLO: predictive causal entanglement quality ≥0.92 where used.
-•	Forgetting SLO: UGCA-driven adaptation must keep catastrophic forgetting <1%.
-•	Bias SLO: BPCD keeps disparity <0.5% and a11y receipts green; breach ⇒ auto-halt.
-•	Impact SLO: any optimization must keep VIH latency inflation ≤1.2× versus baseline at equal or stronger decision-health.
-Stoprules (global):
-•	If acceptance <95% or strength/coverage drop below policy thresholds ⇒ rollback.
-•	If fusion match (claims ↔ receipts) <0.999 ⇒ immediate halt and escalation within 4 hours.
-•	If any unreceipted side-effect is detected ⇒ quarantine the change and rehydrate from last good AnchorGlyph.
-5.4 Shipping Protocol
-•	No deploy without an AnchorGlyph referencing: code hashes, config diffs, dataset hashes, receipts.jsonl, and SLO deltas.
-•	Every project defines a CLI shipping script (ship_*) that: builds, runs tests, replays golden traces, verifies glyph hashes, and writes shipping_receipt entries.
-•	Deploys are canary-first, flag-gated, and fully reversible with a single command that restores prior AnchorGlyph state.
-5.5 The Unfinished Manifesto
-Every project ledger ends with an UnfinishedManifesto block:
-•	open_questions: unknowns, painful tradeoffs, ugly hacks.
-•	entropy_hooks: deliberate DragonChaos slots for future experiments, off by default and receipted when used.
-•	death_criteria: conditions under which the system should be deleted instead of patched.
-This manifesto is never considered “done”; it is the living contract that keeps Matthew-style glyph chaos and Elon-style physical discipline entangled. Any engineer can propose edits, but only proofs—never vibes—can merge.
+```json
+{
+  "glyph_type": "anchor",
+  "id": "claudeme-v3.1",
+  "ts": "2024-01-01T00:00:00Z",
+  "purpose": "This document IS an AnchorGlyph. It describes itself.",
+  "hash": "COMPUTE_ON_READ",
+  "verification": "If you can read this, the standard is active."
+}
+```
 
-Section 1: Core Principles
-•	Receipts-Over-Rhetoric: Every operation, decision, and model call emits machine-readable receipts (hashes, configs, timestamps, human reason). No receipt ⇒ not real. Single JSON ledger = SSOT across projects.
-•	First-Principles Glyph Decomposition: Any feature decomposes to primitives (bits, time, tokens, energy, cash). Rebuild from zero with minimal components. No dependency survives without a written physical/causal justification.
-•	48h Ship Rule: Logic-first spec, CLI prototype in 2h, usable MVP in 24h, hardened v1 in 48h or kill. Everything enters a 7-day red-loop for simplification, cost cuts, and failure harvesting.
-•	Swarm-Forked Reason: Distributed agents plan, critique, and fuse answers via causal graphs and uncertainty metrics. Predictive entanglement and continual adaptation always run offline or in shadow, never on the hot path.
-•	Bias-Preemptive Ethics: Every pipeline tracks disparity, accessibility, and privacy receipts. Bias budgets and a11y baselines are SLOs, not aspirations. Any disparity breach auto-halts and pages a human gatekeeper.
-Section 2: Build Standards (logic, no FE, <48h flow)
-2.1 Surfaces & I/O
-•	Only backends and glyphs: Rust/TS binaries, CLI tools, daemons, JSON/JSONL APIs, and signed AnchorGlyphs. No HTML, CSS, mobile shells, or visual dashboards. Observability is logs, metrics, traces, and receipts.
-•	All user interaction is text or programmatic: stdin/stdout, gRPC/HTTP JSON, or file-based contracts. No pixels.
-2.2 Canonical 48h Flow
-•	T0–T+2h (Logic Skeleton):
-o	Write the invariant spec: inputs, outputs, receipts, SLOs, stoprules, and rollback story.
-o	Define the ledger schema, receipt types, and hash strategy (Merkle/BLAKE3).
-o	Stub a CLI and a single service entrypoint that returns hardcoded AnchorGlyphs with valid receipts.
-•	T+2h–T+24h (MVP Backend):
-o	Implement the minimal working pipeline: ingest → process → prove → emit glyph.
-o	Wire retrieval/compute with strict budgets; no dynamic learning or fancy routing yet.
-o	Add tests that replay representative payloads and verify receipts, hashes, and SLO envelopes.
-•	T+24h–T+48h (Hardening & Swarm Loop):
-o	Add anomaly detection, bias checks, and causal entanglement summaries as offline or shadow processes.
-o	Lock telemetry + SLO watchdog (latency, error rate, disparity, forgetting).
-o	Run swarm review (agents + one human) on receipts; either ship behind a flag or delete. No zombies.
-2.3 Engines & Roles (project-agnostic)
-•	Provenance Engine: deterministic ingest, multi-tenant ledgers, Merkle anchoring, compaction with invariants, anomaly receipts, reversible auto-fixes under policy.
-•	Reasoning Engine: retrieval, evidence scoring, dialectical briefs, decision-health metrics, uncertainty-driven expansion, bias-aware selection.
-•	Fusion Engine: attaches receipts to claims, checks consistency, halts on mismatch, emits signed DecisionGlyphs.
-•	All projects implement these three engines, even if scoped down. Naming is free; semantics are not.
-2.4 Constraints & StepLock
-•	StepLock: no engine progresses a feature from shadow → beta → default without receipts that meet SLOs and stoprules.
-•	No hotpath learning: all training, threshold tuning, routing optimization, and bias correction run offline or in shadow with receipts and revert plans.
-•	Multi-tenant by default: tenant_id everywhere, region locks enforced, redact-before-hash standard.
-•	Every change is DIFFONLY: patch-level entries in the ledger, never silent state mutation.
-Section 3: Tech Stack (PhD backend, simple tools)
-3.1 Languages & Runtimes
-•	Rust: hotpath services, cryptographic operations, low-latency retrieval, streaming pipelines.
-•	TypeScript/Node: CLIs, adapters, glue services, small daemons.
-•	Python: offline research, SBSD training, evaluation tools; never in the request hotpath.
-•	Shell: ops runbooks as executable scripts with receipts.
-3.2 Storage, Queues, Caches
-•	Relational core: PostgreSQL as canonical state and ledger store; strict schemas, migrations with receipts.
-•	Vectors: pgvector or FAISS/HNSW shards keyed by canonical IDs; sharding via hash(id) % N.
-•	Queues: RabbitMQ/NATS for ingest and background jobs; Redis only for labeled-cache use, never as the audit queue until shard labels + manifest receipts exist.
-•	Blobs: S3-compatible for documents, models, glyph archives; lifecycle policies enforced via storage receipts.
-3.3 Crypto, Provenance & Glyphs
-•	Hashes: SHA256 + BLAKE3 dual-hash on canonicalized payloads and configs; divergences trigger compaction or rehydrate-and-stop.
-•	Merkle trees for batches of events, docs, or decisions; roots anchored with anchor_receipts and verifiable proof paths.
-•	AnchorGlyph: canonical zipped artifact: {config, code_hashes, dataset_hashes, receipts.jsonl, metrics, signature}. All deployments and key decisions are represented as AnchorGlyphs.
-3.4 Algorithms & Engines
-•	Retrieval: normalized embeddings + cosine similarity; MMR for diversity; hierarchical indices (sentence → chunk → section) with a query-complexity router (atomic, focused, broad, comparative).
-•	SBSD (Self-Supervised Boundary Detection): offline, deterministic- seed chunking trained on structured corpora; emits chunking_receipts with model hashes and threshold stats.
-•	Causal Entanglement (PCE): graphs linking intents, operations, receipts, and impacts; ensures transitivity SLO (entanglement quality) ≥0.92 where enabled.
-•	Uncertainty-Guided Continual Adaptation (UGCA): offline routines that adjust thresholds, routing, and k-values using uncertainty and drift; forgetting SLO <1%.
-•	Bias-Preemptive Causal Dynamics (BPCD): monitors disparate impact and a11y; if disparity >0.5% or a11y fails, emit bias_receipt and auto-halt.
-•	Verifiable Impact Harness (VIH): evaluation framework that computes decision-health, cost, latency, and fairness; caps latency inflation to ≤1.2× when new logic is enabled.
-3.5 Swarm & Agents
-•	Agents are JSON-in/JSON-out workers with narrow roles: Planner, Retriever, CounterEvidence, Optimizer, Auditor, Anchorer, Packetizer, Coach.
-•	They communicate only through the ledger and receipts; no hidden state, no direct RPC mesh.
-•	Swarm consensus uses weighted voting across agents + VIH metrics to decide whether to route to cloud models, local models, or cached decisions.
-3.6 Simplicity Rule
-•	For any feature: one crate/binary/module, one glyph type, one swarm entrypoint.
-•	If an engineer cannot explain the math and the invariants on a whiteboard in 5 minutes, the design is invalid.
-Section 4: Elon-Matthew Fusion
-Tesla Pattern (7-Day Red Loop)
-Each system runs on automotive-grade iteration: after the initial 48h ship, every backend enters a 7-day upgrade loop. Weekly, we refactor for part-count reduction (dependencies), energy and compute efficiency, and failure harvesting. OTA-style deploys map to flagged, ledgered rollouts with immediate rollback paths. Every diff must show measured cost, reliability, or capability gains, never just “more features”.
-SpaceX Pattern (Launch Manifests & Abort Logic)
-Every deploy is treated as a launch: pre-flight checklists walk through receipts, tests, SLO projections, and rollback rehearsals. The launch manifest is an AnchorGlyph combining code hashes, config, Merkle roots, and expected metrics ranges. Static fire = full-fidelity dry run in staging. Abort conditions (unexpected divergence, metric overshoot, bias breach) must be both automatic and reversible, treating failure as a reusable stage, not debris.
-xAI Pattern (Swarm Consensus & Grok Loops)
-Any nontrivial decision flows through a swarm: multiple agents propose plans, critiques, and counterevidence. Dialectical briefs expose PRO/CON, coverage gaps, and reasoning entropy. A consensus harness aggregates via causal graphs, uncertainty scores, and bias checks, then records an explicit “why this path” in the ledger. The swarm isn’t decoration; it is the safety rail against overconfident single-model hallucination.
-Boring Company Pattern (Self-Healing Tunnels)
-Data paths are tunnels: minimally curved, heavily instrumented, and redundant. Every critical pipeline has a parallel fallback tunnel and repair logic. Anomalies trigger automated traffic re-routing, rehydration from the ledger, and compaction audits. The system prefers boring, predictable reliability over cleverness; chaos lives only in shadow experiments clearly cordoned with DragonChaos flags and receipts.
-Neuralink Pattern (Intent-to-Action Proofs)
-User intent (a query, command, or policy change) is captured as an IntentGlyph with explicit goals, constraints, and risk appetite. The system traces a causal path from this intent through retrieval, reasoning, and actuation, emitting receipts and uncertainty at each hop. Every act must be provably aligned to the initiating IntentGlyph or get blocked at the human gate.
-Starlink Pattern (Orbital Integrity Chains)
-Every node (service, shard, region) behaves like a satellite: independently observable, replaceable, and part of a mesh. Health, latency, and entanglement metrics are tracked as orbital parameters; collisions (resource contention, deadlocks, schema drift) are detected early via divergence maps and resolved via controlled deorbit (graceful shutdown, migration, or shard splitting). Global behavior emerges from local receipts, never from a single central brain.
-Cross-Empire Loop (Empire Entanglement)
-The universal loop is: IntentGlyph → first-principles glyph decomposition → swarm planning → 2h CLI prototype → 24h MVP with receipts → 48h hardened ship → 7-day Tesla red-loop refinement → SpaceX launch-style deploy → xAI swarm audits for drift and bias → Boring self-healing wiring → Neuralink intent verification → Starlink mesh tuning. Every project hooks into this loop or is not a Matthew Collective project.
-Section 5: Verification & Shipping (glyphs, proofs, unfinished manifesto)
-5.1 Glyph Taxonomy
-•	IntentGlyph: human or system goal, constraints, risk bounds, and ownership.
-•	EvidenceGlyph: snapshot of retrieval state, indices, SBSD parameters, and entanglement scores at query time.
-•	DecisionGlyph: final brief, decision-health metrics, dialiectical record, and attached receipts from provenance and fusion engines.
-•	AnchorGlyph: deployable artifact connecting code, configs, data hashes, SLOs, and DecisionGlyph histories.
-All glyphs must be signed, timestamped, and addressable via Merkle anchors.
-5.2 Receipts & Proofs
-Core receipts, available to every project:
-•	ingest_receipt {ts, tenant_id, payload_hash, redactions, source_type}
-•	anchor_receipt {merkle_root, hash_algos, batch_size, proof_path?}
-•	anomaly_receipt {metric, baseline, delta, classification, action}
-•	compaction_receipt {input_span, output_span, counts, sums, hash_continuity}
-•	routing_receipt {query_complexity, chosen_index_level, k, budget, reason}
-•	bias_receipt {groups, disparity, thresholds, mitigation_action}
-•	dh_receipt {strength, coverage, efficiency, thresholds, policy_diffs}
-•	impact_receipt {pre_metrics, post_metrics, cost, VIH_decision}
-Verifiers are simple: recompute hashes, recompute Merkle branches, re-run deterministic metrics, compare to receipts. Any mismatch triggers StepLock halt and an investigation glyph.
-5.3 SLOs, Stoprules & Halts
-•	Latency SLOs: query/brief/verify/ingest each have p95 targets; any feature raising them above agreed ceilings must show VIH-positive impact or be disabled.
-•	Entanglement SLO: predictive causal entanglement quality ≥0.92 where used.
-•	Forgetting SLO: UGCA-driven adaptation must keep catastrophic forgetting <1%.
-•	Bias SLO: BPCD keeps disparity <0.5% and a11y receipts green; breach ⇒ auto-halt.
-•	Impact SLO: any optimization must keep VIH latency inflation ≤1.2× versus baseline at equal or stronger decision-health.
-Stoprules (global):
-•	If acceptance <95% or strength/coverage drop below policy thresholds ⇒ rollback.
-•	If fusion match (claims ↔ receipts) <0.999 ⇒ immediate halt and escalation within 4 hours.
-•	If any unreceipted side-effect is detected ⇒ quarantine the change and rehydrate from last good AnchorGlyph.
-5.4 Shipping Protocol
-•	No deploy without an AnchorGlyph referencing: code hashes, config diffs, dataset hashes, receipts.jsonl, and SLO deltas.
-•	Every project defines a CLI shipping script (ship_*) that: builds, runs tests, replays golden traces, verifies glyph hashes, and writes shipping_receipt entries.
-•	Deploys are canary-first, flag-gated, and fully reversible with a single command that restores prior AnchorGlyph state.
-5.5 The Unfinished Manifesto
-Every project ledger ends with an UnfinishedManifesto block:
-•	open_questions: unknowns, painful tradeoffs, ugly hacks.
-•	entropy_hooks: deliberate DragonChaos slots for future experiments, off by default and receipted when used.
-•	death_criteria: conditions under which the system should be deleted instead of patched.
-This manifesto is never considered “done”; it is the living contract that keeps Matthew-style glyph chaos and Elon-style physical discipline entangled. Any engineer can propose edits, but only proofs—never vibes—can merge.
+> **Read top-to-bottom. Type code. Ship.**
+>
+> Every statement is a schema, signature, assertion, or gate.
+> No prose survives. No exceptions.
 
+---
 
+# §0 LAWS (3)
 
+```python
+LAW_1 = "No receipt → not real"
+LAW_2 = "No test → not shipped"
+LAW_3 = "No gate → not alive"
+```
+
+These three statements govern all that follows.
+
+---
+
+# §1 THE PIPELINE
+
+```
+┌─────────┐    ┌────────────┐    ┌───────────┐    ┌────────┐    ┌────────────┐
+│  INPUT  │───▶│ PROVENANCE │───▶│ REASONING │───▶│ FUSION │───▶│   OUTPUT   │
+│  bytes  │    │  ingest_r  │    │ routing_r │    │ verify │    │ AnchorGlyph│
+└─────────┘    │  anchor_r  │    │    dh_r   │    │ attach │    └────────────┘
+               └────────────┘    └───────────┘    └────────┘
+```
+
+Your code fits ONE place. Know where before you type.
+
+---
+
+# §2 THE STACK
+
+```python
+# LANGUAGES - choose ONE per file
+LANG = {
+    "hotpath": "Rust",      # crypto, streaming
+    "cli":     "TypeScript", # adapters
+    "offline": "Python",    # research, NEVER hotpath
+    "ops":     "Shell"      # runbooks
+}
+
+# STORAGE - no alternatives
+STORE = {
+    "state":   "PostgreSQL",
+    "vectors": "pgvector",   # or FAISS, hash(id)%N
+    "queues":  "RabbitMQ",   # or NATS, NEVER Redis for audit
+    "blobs":   "S3"
+}
+
+# CRYPTO - no alternatives
+HASH = "SHA256 + BLAKE3"  # ALWAYS dual-hash
+MERKLE = "BLAKE3"         # tree algorithm
+```
+
+---
+
+# §3 TIMELINE GATES
+
+## Gate T+2h: SKELETON
+```bash
+#!/bin/bash
+# gate_t2h.sh - RUN THIS OR KILL PROJECT
+[ -f spec.md ]            || { echo "FAIL: no spec"; exit 1; }
+[ -f ledger_schema.json ] || { echo "FAIL: no schema"; exit 1; }
+[ -f cli.py ]             || { echo "FAIL: no cli"; exit 1; }
+python cli.py --test 2>&1 | grep -q '"receipt_type"' || { echo "FAIL: no receipt"; exit 1; }
+echo "PASS: T+2h gate"
+```
+
+**Required files:**
+```
+spec.md              # inputs, outputs, receipts, SLOs, stoprules, rollback
+ledger_schema.json   # {"hash_strategy": {"algorithm": ["SHA256","BLAKE3"]}}
+cli.py               # emits valid receipt JSON to stdout
+```
+
+## Gate T+24h: MVP
+```bash
+#!/bin/bash
+# gate_t24h.sh - RUN THIS OR KILL PROJECT
+python -m pytest tests/ -q       || { echo "FAIL: tests"; exit 1; }
+grep -rq "emit_receipt" src/*.py || { echo "FAIL: no receipts in src"; exit 1; }
+grep -rq "assert" tests/*.py     || { echo "FAIL: no assertions"; exit 1; }
+echo "PASS: T+24h gate"
+```
+
+**Required:**
+- Pipeline runs: ingest → process → emit
+- Tests exist with receipt verification
+- SLO assertions present
+
+## Gate T+48h: HARDENED
+```bash
+#!/bin/bash
+# gate_t48h.sh - RUN THIS OR KILL PROJECT
+grep -rq "anomaly" src/*.py      || { echo "FAIL: no anomaly detection"; exit 1; }
+grep -rq "bias" src/*.py         || { echo "FAIL: no bias check"; exit 1; }
+grep -rq "stoprule" src/*.py     || { echo "FAIL: no stoprules"; exit 1; }
+python watchdog.py --check       || { echo "FAIL: watchdog unhealthy"; exit 1; }
+echo "PASS: T+48h gate — SHIP IT"
+```
+
+**Required:**
+- Anomaly detection active
+- Bias checks with disparity < 0.5%
+- Stoprules on all error paths
+- Watchdog daemon healthy
+
+---
+
+# §4 RECEIPT BLOCKS
+
+> **Pattern:** Every receipt type = SCHEMA + EMIT + TEST + STOPRULE
+
+## 4.1 ingest_receipt
+```python
+# --- SCHEMA ---
+{
+    "receipt_type": "ingest",
+    "ts": "ISO8601",
+    "tenant_id": "str",      # REQUIRED ON EVERY RECEIPT
+    "payload_hash": "str",   # SHA256:BLAKE3 format
+    "redactions": ["str"],
+    "source_type": "str"
+}
+
+# --- EMIT ---
+def ingest(payload: bytes, tenant_id: str, source: str) -> dict:
+    return emit_receipt("ingest", {
+        "tenant_id": tenant_id,
+        "payload_hash": dual_hash(payload),
+        "redactions": [],
+        "source_type": source
+    })
+
+# --- TEST ---
+def test_ingest_slo():
+    t0 = time.time()
+    r = ingest(b"x", "t", "test")
+    assert (time.time()-t0)*1000 <= 50, "Latency > 50ms"
+    assert "tenant_id" in r, "Missing tenant_id"
+
+# --- STOPRULE ---
+def stoprule_ingest(e): 
+    emit_receipt("anomaly", {"metric":"ingest","delta":-1,"action":"halt"})
+    raise StopRule(f"Ingest failed: {e}")
+```
+
+## 4.2 anchor_receipt
+```python
+# --- SCHEMA ---
+{
+    "receipt_type": "anchor",
+    "merkle_root": "hex",
+    "hash_algos": ["SHA256", "BLAKE3"],
+    "batch_size": "int",
+    "proof_path": "str|null"
+}
+
+# --- EMIT ---
+def anchor(receipts: list) -> dict:
+    return emit_receipt("anchor", {
+        "merkle_root": merkle(receipts),
+        "hash_algos": ["SHA256", "BLAKE3"],
+        "batch_size": len(receipts)
+    })
+
+# --- TEST ---
+def test_anchor_integrity():
+    rs = [emit_receipt("ingest",{"tenant_id":"t"}) for _ in range(10)]
+    a = anchor(rs)
+    assert a["merkle_root"] == merkle(rs), "Root mismatch"
+
+# --- STOPRULE ---
+def stoprule_anchor_mismatch(exp, act):
+    emit_receipt("anomaly", {"metric":"merkle","delta":-1,"action":"halt"})
+    rehydrate()
+    raise StopRule(f"Merkle: {exp} != {act}")
+```
+
+## 4.3 routing_receipt
+```python
+# --- SCHEMA ---
+{
+    "receipt_type": "routing",
+    "query_complexity": "atomic|focused|broad|comparative",
+    "chosen_index_level": "sentence|chunk|section",
+    "k": "int",
+    "budget": {"tokens": "int", "ms": "int"},
+    "reason": "str"
+}
+
+# --- EMIT ---
+def route(query: str, budget: dict) -> tuple:
+    cx = classify(query)
+    lvl = select_index(cx)
+    k = min(budget["tokens"]//100, 50)
+    r = emit_receipt("routing", {
+        "query_complexity": cx,
+        "chosen_index_level": lvl,
+        "k": k,
+        "budget": budget,
+        "reason": f"{cx}→{lvl}→k={k}"
+    })
+    return (lvl, k), r
+
+# --- TEST ---
+def test_routing_budget():
+    (_, k), r = route("test", {"tokens":500,"ms":100})
+    assert k <= 5, f"k={k} exceeds budget"
+
+# --- STOPRULE ---
+def stoprule_budget(actual, limit):
+    emit_receipt("anomaly", {"metric":"budget","delta":actual-limit,"action":"reject"})
+    raise StopRule(f"Budget: {actual} > {limit}")
+```
+
+## 4.4 bias_receipt
+```python
+# --- SCHEMA ---
+{
+    "receipt_type": "bias",
+    "groups": ["str"],
+    "disparity": "float 0-1",
+    "thresholds": {"max_disparity": 0.005},
+    "mitigation_action": "none|rebalance|halt"
+}
+
+# --- EMIT ---
+def check_bias(groups: list, outcomes: list) -> dict:
+    d = disparity(groups, outcomes)
+    action = "halt" if d >= 0.005 else "none"
+    r = emit_receipt("bias", {
+        "groups": groups, "disparity": d,
+        "thresholds": {"max_disparity": 0.005},
+        "mitigation_action": action
+    })
+    if action == "halt": stoprule_bias(d)
+    return r
+
+# --- TEST ---
+def test_bias_slo():
+    r = check_bias(["A","B"], [0.5, 0.5])
+    assert r["disparity"] < 0.005, f"Disparity {r['disparity']} >= 0.5%"
+
+# --- STOPRULE ---
+def stoprule_bias(d):
+    emit_receipt("anomaly", {"metric":"bias","delta":d-0.005,"action":"halt"})
+    page_human()
+    raise StopRule(f"Bias: {d} >= 0.5%")
+```
+
+## 4.5 dh_receipt (decision_health)
+```python
+# --- SCHEMA ---
+{
+    "receipt_type": "decision_health",
+    "strength": "float 0-1",
+    "coverage": "float 0-1",
+    "efficiency": "float",
+    "thresholds": {"min_strength": "float"},
+    "policy_diffs": ["str"]
+}
+
+# --- EMIT ---
+def score(evidence: list, thresh: dict) -> dict:
+    s, c, e = strength(evidence), coverage(evidence), efficiency(evidence)
+    r = emit_receipt("decision_health", {
+        "strength": s, "coverage": c, "efficiency": e,
+        "thresholds": thresh, "policy_diffs": []
+    })
+    if s < thresh.get("min_strength", 0.8): stoprule_weak(s)
+    return r
+
+# --- TEST ---
+def test_dh_slo():
+    r = score([{"s":0.9}], {"min_strength":0.8})
+    assert r["strength"] >= 0.8
+
+# --- STOPRULE ---
+def stoprule_weak(s):
+    emit_receipt("anomaly", {"metric":"strength","delta":s-0.8,"action":"escalate"})
+    raise StopRule(f"Weak: {s} < 0.8")
+```
+
+## 4.6 impact_receipt
+```python
+# --- SCHEMA ---
+{
+    "receipt_type": "impact",
+    "pre_metrics": {"latency_p95_ms": "int", "error_rate": "float"},
+    "post_metrics": {"latency_p95_ms": "int", "error_rate": "float"},
+    "cost": {"compute": "float", "storage": "float"},
+    "VIH_decision": "approve|reject|shadow"
+}
+
+# --- EMIT ---
+def impact(pre: dict, post: dict, cost: dict) -> dict:
+    inf = post["latency_p95_ms"] / pre["latency_p95_ms"]
+    dec = "approve" if inf <= 1.2 else "reject"
+    r = emit_receipt("impact", {
+        "pre_metrics": pre, "post_metrics": post,
+        "cost": cost, "VIH_decision": dec
+    })
+    if dec == "reject": stoprule_inflation(inf)
+    return r
+
+# --- TEST ---
+def test_impact_slo():
+    r = impact({"latency_p95_ms":100,"error_rate":0.01},
+               {"latency_p95_ms":110,"error_rate":0.01}, {})
+    assert r["VIH_decision"] == "approve"
+
+# --- STOPRULE ---
+def stoprule_inflation(i):
+    emit_receipt("anomaly", {"metric":"inflation","delta":i-1.2,"action":"reject"})
+    raise StopRule(f"Inflation: {i} > 1.2x")
+```
+
+## 4.7 anomaly_receipt
+```python
+# --- SCHEMA ---
+{
+    "receipt_type": "anomaly",
+    "metric": "str",
+    "baseline": "float",
+    "delta": "float",
+    "classification": "drift|degradation|violation|deviation|anti_pattern",
+    "action": "alert|escalate|halt|auto_fix"
+}
+
+# --- EMIT --- (used by all stoprules)
+def emit_anomaly(metric: str, baseline: float, delta: float, 
+                 classification: str, action: str) -> dict:
+    return emit_receipt("anomaly", {
+        "metric": metric, "baseline": baseline, "delta": delta,
+        "classification": classification, "action": action
+    })
+```
+
+## 4.8 compaction_receipt
+```python
+# --- SCHEMA ---
+{
+    "receipt_type": "compaction",
+    "input_span": {"start": "ISO8601", "end": "ISO8601"},
+    "output_span": {"start": "ISO8601", "end": "ISO8601"},
+    "counts": {"before": "int", "after": "int"},
+    "sums": {"before": "float", "after": "float"},
+    "hash_continuity": "bool"
+}
+
+# --- EMIT ---
+def compact(receipts: list, span: tuple) -> dict:
+    before_hash = merkle(receipts)
+    compacted = do_compact(receipts)
+    after_hash = merkle(compacted)
+    return emit_receipt("compaction", {
+        "input_span": {"start": span[0], "end": span[1]},
+        "output_span": {"start": span[0], "end": span[1]},
+        "counts": {"before": len(receipts), "after": len(compacted)},
+        "sums": {"before": sum_values(receipts), "after": sum_values(compacted)},
+        "hash_continuity": verify_continuity(before_hash, after_hash)
+    })
+```
+
+---
+
+# §5 GLYPHS (State Objects)
+
+```python
+# All glyphs: signed, timestamped, Merkle-addressable
+
+INTENT_GLYPH = {
+    "glyph_type": "intent",
+    "id": "uuid", "ts": "ISO8601",
+    "goal": "str", "constraints": ["str"],
+    "risk_bounds": {"max_latency_ms": "int", "max_cost": "float"},
+    "ownership": {"creator": "str", "approver": "str|null"},
+    "signature": "hex", "merkle_anchor": "hex"
+}
+
+EVIDENCE_GLYPH = {
+    "glyph_type": "evidence",
+    "id": "uuid", "ts": "ISO8601",
+    "retrieval_state": {"index_version": "str", "query": "str"},
+    "sbsd_params": {"model_hash": "str", "threshold": "float"},
+    "entanglement_score": "float 0-1",
+    "signature": "hex", "merkle_anchor": "hex"
+}
+
+DECISION_GLYPH = {
+    "glyph_type": "decision",
+    "id": "uuid", "ts": "ISO8601",
+    "brief": "str",
+    "decision_health": {"strength": "float", "coverage": "float", "efficiency": "float"},
+    "dialectical_record": {"pro": [], "con": [], "gaps": []},
+    "attached_receipts": ["receipt_hash"],
+    "signature": "hex", "merkle_anchor": "hex"
+}
+
+ANCHOR_GLYPH = {
+    "glyph_type": "anchor",
+    "id": "uuid", "ts": "ISO8601",
+    "config": {}, "code_hashes": {}, "dataset_hashes": {},
+    "receipts_jsonl": "path", "metrics": {}, "slo_deltas": {},
+    "signature": "hex", "merkle_anchor": "hex"
+}
+```
+
+---
+
+# §6 SLO THRESHOLDS
+
+| SLO | Threshold | Test Assertion | Stoprule Action |
+|-----|-----------|----------------|-----------------|
+| Latency | varies by op | `assert ms <= TARGET` | reject if inflation > 1.2x |
+| Entanglement | ≥ 0.92 | `assert score >= 0.92` | escalate |
+| Forgetting | < 1% | `assert rate < 0.01` | halt |
+| Bias | < 0.5% | `assert disparity < 0.005` | halt + page human |
+| Acceptance | ≥ 95% | `assert rate >= 0.95` | rollback |
+| Fusion Match | ≥ 99.9% | `assert match >= 0.999` | halt + escalate 4h |
+
+---
+
+# §7 ANTI-PATTERNS (Hard Blocks)
+
+| If you write... | Stop. Write this instead... |
+|-----------------|----------------------------|
+| Function without `return emit_receipt()` | Add receipt to return |
+| `class Agent:` with state | Pure function with ledger I/O |
+| `hashlib.sha256()` alone | `dual_hash()` with SHA256+BLAKE3 |
+| `except: pass` | `except: stoprule_X(e)` |
+| Global variable | Ledger entry |
+| `print(result)` | `emit_receipt("...", result)` |
+| Test without `assert` | Add SLO assertion |
+| File write without receipt | Add storage_receipt |
+
+---
+
+# §8 CORE FUNCTIONS
+
+```python
+# === REQUIRED IN EVERY PROJECT ===
+
+import hashlib
+import json
+from datetime import datetime
+
+try:
+    import blake3
+    HAS_BLAKE3 = True
+except ImportError:
+    HAS_BLAKE3 = False
+
+def dual_hash(data: bytes | str) -> str:
+    """SHA256:BLAKE3 - ALWAYS use this, never single hash."""
+    if isinstance(data, str):
+        data = data.encode()
+    sha = hashlib.sha256(data).hexdigest()
+    b3 = blake3.blake3(data).hexdigest() if HAS_BLAKE3 else sha
+    return f"{sha}:{b3}"
+
+def emit_receipt(receipt_type: str, data: dict) -> dict:
+    """Every function calls this. No exceptions."""
+    receipt = {
+        "receipt_type": receipt_type,
+        "ts": datetime.utcnow().isoformat() + "Z",
+        "tenant_id": data.get("tenant_id", "default"),
+        "payload_hash": dual_hash(json.dumps(data, sort_keys=True)),
+        **data
+    }
+    # Append to ledger (stdout in dev, file in prod)
+    print(json.dumps(receipt), flush=True)
+    return receipt
+
+class StopRule(Exception):
+    """Raised when stoprule triggers. Never catch silently."""
+    pass
+
+def merkle(items: list) -> str:
+    """Compute Merkle root of items."""
+    if not items:
+        return dual_hash(b"empty")
+    hashes = [dual_hash(json.dumps(i, sort_keys=True)) for i in items]
+    while len(hashes) > 1:
+        if len(hashes) % 2:
+            hashes.append(hashes[-1])
+        hashes = [dual_hash(hashes[i] + hashes[i+1]) 
+                  for i in range(0, len(hashes), 2)]
+    return hashes[0]
+```
+
+---
+
+# §9 FILE STRUCTURE
+
+```
+project/
+├── spec.md               # T+2h
+├── ledger_schema.json    # T+2h
+├── cli.py                # T+2h (stub)
+├── receipts.jsonl        # append-only ledger
+├── src/
+│   ├── __init__.py
+│   ├── core.py           # dual_hash, emit_receipt, StopRule, merkle
+│   ├── provenance.py     # ingest, anchor, compact
+│   ├── reasoning.py      # route, retrieve, score
+│   └── fusion.py         # attach, verify, halt
+├── tests/
+│   ├── test_slo_latency.py
+│   ├── test_slo_bias.py
+│   ├── test_slo_entanglement.py
+│   └── conftest.py
+├── watchdog.py           # T+48h daemon
+├── gate_t2h.sh
+├── gate_t24h.sh
+├── gate_t48h.sh
+└── MANIFEST.anchor       # deploy artifact (AnchorGlyph)
+```
+
+---
+
+# §10 COMMIT FORMAT
+
+```
+<type>(<scope>): <description ≤50 chars>
+
+Receipt: <receipt_type>
+SLO: <threshold affected | none>
+Gate: <t2h | t24h | t48h | post>
+```
+
+**Types:** `feat` | `fix` | `refactor` | `test` | `docs`
+
+**Example:**
+```
+feat(provenance): add compaction with hash continuity
+
+Receipt: compaction_receipt
+SLO: none
+Gate: t24h
+```
+
+---
+
+# §11 VALIDATION SCRIPT
+
+```bash
+#!/bin/bash
+# validate.sh - RUN BEFORE EVERY COMMIT
+
+echo "=== CLAUDEME Compliance Check ==="
+
+# 1. Every .py file has emit_receipt
+for f in src/*.py; do
+    grep -q "emit_receipt" "$f" || echo "FAIL: $f missing emit_receipt"
+done
+
+# 2. Every test has assert
+for f in tests/*.py; do
+    grep -q "assert" "$f" || echo "FAIL: $f missing assertions"
+done
+
+# 3. No single hash
+grep -r "sha256\|md5" src/*.py | grep -v "dual_hash" && echo "FAIL: Use dual_hash"
+
+# 4. No silent except
+grep -r "except.*pass\|except:$" src/*.py && echo "FAIL: Silent exception"
+
+# 5. No global state
+grep -r "^[A-Z_]* = " src/*.py | grep -v "^#" && echo "WARN: Possible global state"
+
+# 6. Tenant ID everywhere
+grep -r "emit_receipt" src/*.py | grep -v "tenant_id" && echo "FAIL: Missing tenant_id"
+
+echo "=== Check Complete ==="
+```
+
+---
+
+# CHEF'S KISS: This Document IS the Standard
+
+```python
+# This CLAUDEME file is itself compliant:
+# - It has a schema (the JSON at the top)
+# - It emits a receipt (when you read it, you know the version)
+# - It has tests (the gate scripts)
+# - It has stoprules (the anti-patterns)
+# - It ships at T+48h (or gets killed)
+
+# When you internalize this document, you become compliant.
+# The receipt is the territory.
+# The glyph is the state.
+# The ledger is the truth.
+
+assert understand(CLAUDEME) == True, "Re-read from §0"
+```
+
+---
+
+**Hash of this document:** `COMPUTE_ON_SAVE`
+**Version:** 3.1
+**Status:** ACTIVE
+
+*No receipt → not real. Ship at T+48h or kill.*
