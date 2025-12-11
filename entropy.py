@@ -104,7 +104,53 @@ def agent_fitness(receipts_before: List[dict], receipts_after: List[dict],
 
 
 # =============================================================================
-# CORE FUNCTION 3: cycle_entropy_delta
+# CORE FUNCTION 3: compute_fitness_score
+# =============================================================================
+
+def compute_fitness_score(pattern_id: str, receipts_before: List[dict],
+                         receipts_after: List[dict], n_receipts: int) -> dict:
+    """
+    Compute fitness score with instrumentation fields.
+
+    Args:
+        pattern_id: Pattern identifier
+        receipts_before: Receipts before pattern acted
+        receipts_after: Receipts after pattern acted
+        n_receipts: Number of receipts pattern emitted
+
+    Returns:
+        dict with fields:
+            - pattern_id: str
+            - H_before: float (entropy before)
+            - H_after: float (entropy after)
+            - n_receipts: int
+            - fitness: float (numeric score)
+            - fitness_class: str (good/bad/neutral)
+    """
+    h_before = system_entropy(receipts_before)
+    h_after = system_entropy(receipts_after)
+    fitness = agent_fitness(receipts_before, receipts_after, n_receipts)
+
+    # Classify fitness
+    if fitness > 0:
+        fitness_class = "good"
+    elif fitness < 0:
+        fitness_class = "bad"
+    else:
+        fitness_class = "neutral"
+
+    return {
+        "pattern_id": pattern_id,
+        "H_before": h_before,
+        "H_after": h_after,
+        "n_receipts": n_receipts,
+        "fitness": fitness,
+        "fitness_class": fitness_class
+    }
+
+
+# =============================================================================
+# CORE FUNCTION 4: cycle_entropy_delta
 # =============================================================================
 
 def cycle_entropy_delta(receipts_before: List[dict], receipts_after: List[dict]) -> float:
@@ -430,6 +476,7 @@ __all__ = [
     # Core functions
     "system_entropy",
     "agent_fitness",
+    "compute_fitness_score",
     "cycle_entropy_delta",
     "selection_pressure",
     # Emit functions

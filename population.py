@@ -158,7 +158,8 @@ def hilbert_bound(available_compute: float = 1.0, current_entropy: float = 0.0) 
 # =============================================================================
 
 def entropy_conservation(entropy_in: float, entropy_out: float,
-                        work_done: float, tenant_id: str = "default") -> Tuple[bool, float]:
+                        work_done: float, tenant_id: str = "default",
+                        tolerance: float = None, scenario: str = "BASELINE") -> Tuple[bool, float, dict]:
     """
     Validates 2nd law: sum(entropy_in) = sum(entropy_out) + work_done
 
@@ -171,28 +172,42 @@ def entropy_conservation(entropy_in: float, entropy_out: float,
         entropy_out: Output entropy
         work_done: Work performed (entropy reduction)
         tenant_id: Tenant identifier
+        tolerance: Absolute tolerance (if None, uses CONSERVATION_TOLERANCE)
+        scenario: Scenario name for tolerance lookup (BASELINE, STRESS, etc.)
 
     Returns:
-        Tuple of (is_valid, violation_delta)
+        Tuple of (is_valid, violation_delta, receipt_data)
     """
+    # Use scenario tolerance if tolerance not specified
+    if tolerance is None:
+        from sim import SCENARIO_TOLERANCES
+        tolerance = SCENARIO_TOLERANCES.get(scenario, CONSERVATION_TOLERANCE)
+
+    # Scale tolerance by system magnitude (relative not absolute)
+    threshold = tolerance * max(abs(entropy_in), abs(entropy_out), 1.0)
+
     expected = entropy_in
     actual = entropy_out + work_done
     violation_delta = abs(expected - actual)
-    is_valid = violation_delta <= CONSERVATION_TOLERANCE
+    is_valid = violation_delta < threshold
+
+    receipt_data = {
+        "tenant_id": tenant_id,
+        "entropy_in": entropy_in,
+        "entropy_out": entropy_out,
+        "work_done": work_done,
+        "expected": expected,
+        "actual": actual,
+        "violation_delta": violation_delta,
+        "tolerance": tolerance,
+        "threshold": threshold,
+        "scenario": scenario
+    }
 
     if not is_valid:
-        emit_receipt("conservation_violation", {
-            "tenant_id": tenant_id,
-            "entropy_in": entropy_in,
-            "entropy_out": entropy_out,
-            "work_done": work_done,
-            "expected": expected,
-            "actual": actual,
-            "violation_delta": violation_delta,
-            "tolerance": CONSERVATION_TOLERANCE
-        })
+        emit_receipt("conservation_violation", receipt_data)
 
-    return is_valid, violation_delta
+    return is_valid, violation_delta, receipt_data
 
 
 # =============================================================================
