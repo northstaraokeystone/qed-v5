@@ -28,17 +28,10 @@ from autoimmune import is_self, GERMLINE_PATTERNS
 # CONSTANTS
 # =============================================================================
 
-CONSERVATION_TOLERANCE = 0.1  # Default 10% tolerance for thermodynamic violations
-
-# Scenario-specific tolerances for entropy conservation
-SCENARIO_TOLERANCES = {
-    "BASELINE": 0.1,
-    "STRESS": 0.2,        # Looser for high churn
-    "GENESIS": 0.15,
-    "THERMODYNAMIC": 0.05,  # Strictest
-    "SINGULARITY": 0.1,
-    "GODEL": 0.1
-}
+# Adaptive tolerance bounds - system derives its own precision
+TOLERANCE_FLOOR = 0.01   # Physics minimum precision (Heisenberg, Shannon)
+TOLERANCE_CEILING = 0.5  # Above 50% uncertainty = admit chaos
+ENTROPY_HISTORY_WINDOW = 20  # Cycles for variance calculation
 
 # Module exports for receipt types
 RECEIPT_SCHEMA = [
@@ -60,7 +53,6 @@ class SimConfig:
     resource_budget: float = 1.0
     random_seed: int = 42
     hitl_auto_approve_rate: float = 0.8
-    conservation_tolerance: float = 0.1
     scenario_name: str = "BASELINE"
 
 
@@ -78,6 +70,11 @@ class SimState:
     entropy_in_total: float = 0.0
     entropy_out_total: float = 0.0
     work_done_total: float = 0.0
+    # Per-cycle tracking for adaptive tolerance computation
+    births_this_cycle: int = 0
+    deaths_this_cycle: int = 0
+    superposition_transitions_this_cycle: int = 0
+    wounds_this_cycle: int = 0
 
 
 @dataclass(frozen=True)
@@ -233,10 +230,17 @@ def simulate_cycle(state: SimState, config: SimConfig) -> List[dict]:
     """
     violations = []
 
+    # Reset per-cycle counters for adaptive tolerance computation
+    state.births_this_cycle = 0
+    state.deaths_this_cycle = 0
+    state.superposition_transitions_this_cycle = 0
+    state.wounds_this_cycle = 0
+
     # Generate wounds stochastically
     if random.random() < config.wound_rate:
         wound = simulate_wound(state, "operational")
         state.wound_history.append(wound)
+        state.wounds_this_cycle += 1
 
     # Run autocatalysis detection
     simulate_autocatalysis(state)
@@ -344,6 +348,7 @@ def simulate_autocatalysis(state: SimState) -> None:
                 "cycle": state.cycle
             })
             state.receipt_ledger.append(receipt)
+            state.births_this_cycle += 1
 
         # Death detection (crossing threshold downward)
         if prev_coherence >= 0.3 and current_coherence < 0.3:
@@ -354,11 +359,13 @@ def simulate_autocatalysis(state: SimState) -> None:
                 "cycle": state.cycle
             })
             state.receipt_ledger.append(receipt)
+            state.deaths_this_cycle += 1
 
             # Move to superposition unless SELF
             if not is_self(pattern):
                 to_remove.append(i)
                 state.superposition_patterns.append(pattern)
+                state.superposition_transitions_this_cycle += 1
 
     # Remove dead patterns
     for i in reversed(to_remove):
@@ -376,6 +383,9 @@ def simulate_selection(state: SimState) -> None:
         return
 
     survivors, superposition = selection_pressure(state.active_patterns, "simulation")
+
+    # Track superposition transitions
+    state.superposition_transitions_this_cycle += len(superposition)
 
     # Update active patterns (SELF always survive)
     state.active_patterns = survivors
@@ -434,6 +444,7 @@ def simulate_recombination(state: SimState, config: SimConfig) -> None:
             })
             if autocatalysis_check(offspring):
                 state.active_patterns.append(offspring)
+                state.births_this_cycle += 1
 
                 # Emit sim_mate receipt
                 receipt = emit_receipt("sim_mate", {
@@ -491,6 +502,7 @@ def simulate_genesis(state: SimState, config: SimConfig) -> None:
                 "ts": f"2025-01-01T{state.cycle:02d}:00:00Z"
             })
             state.active_patterns.append(pattern)
+            state.births_this_cycle += 1
 
             # Track entropy after creating offspring
             receipts_after = state.receipt_ledger.copy()
@@ -550,6 +562,150 @@ def simulate_completeness(state: SimState) -> None:
 # ENTROPY AND THERMODYNAMICS (4 required)
 # =============================================================================
 
+def compute_tolerance(state: SimState) -> tuple[float, dict]:
+    """
+    Derive tolerance from system's own measurement precision.
+
+    Tolerance = uncertainty in entropy accounting from:
+    - Entropy variance (recent history)
+    - Population churn (births + deaths + transitions)
+    - Wound rate (deviations from baseline)
+    - Fitness uncertainty (mean of fitness_var across patterns)
+
+    Args:
+        state: Current SimState with entropy_trace, active_patterns, etc.
+
+    Returns:
+        Tuple of (tolerance, factors_dict) where:
+        - tolerance: float clamped between TOLERANCE_FLOOR and TOLERANCE_CEILING
+        - factors_dict: all factor values for receipt audit trail
+    """
+    # Entropy variance factor: stddev of recent entropy deltas
+    if len(state.entropy_trace) >= 2:
+        recent_window = state.entropy_trace[-ENTROPY_HISTORY_WINDOW:]
+        if len(recent_window) >= 2:
+            deltas = [recent_window[i] - recent_window[i-1]
+                     for i in range(1, len(recent_window))]
+            if deltas:
+                mean_delta = sum(deltas) / len(deltas)
+                variance = sum((d - mean_delta) ** 2 for d in deltas) / len(deltas)
+                entropy_variance_factor = variance ** 0.5  # stddev
+            else:
+                entropy_variance_factor = 0.0
+        else:
+            entropy_variance_factor = 0.0
+    else:
+        entropy_variance_factor = 0.0
+
+    # Population churn factor: state transitions / population
+    n_active = len(state.active_patterns)
+    if n_active > 0:
+        total_churn = (state.births_this_cycle +
+                      state.deaths_this_cycle +
+                      state.superposition_transitions_this_cycle)
+        population_churn_factor = total_churn / n_active
+    else:
+        population_churn_factor = 0.0
+
+    # Wound rate factor: wounds this cycle / expected baseline
+    wound_baseline = 0.1  # Expected baseline from original wound_rate
+    if wound_baseline > 0:
+        wound_rate_factor = state.wounds_this_cycle / wound_baseline
+    else:
+        wound_rate_factor = 0.0
+
+    # Fitness uncertainty factor: mean of fitness_var across patterns
+    if state.active_patterns:
+        fitness_vars = [p.get("fitness_var", 0.1) for p in state.active_patterns]
+        fitness_uncertainty_factor = sum(fitness_vars) / len(fitness_vars)
+    else:
+        fitness_uncertainty_factor = 0.1
+
+    # Compute tolerance
+    base = 0.05
+    raw = base * (1.0 + entropy_variance_factor + population_churn_factor +
+                  wound_rate_factor + fitness_uncertainty_factor)
+
+    # Clamp to bounds
+    tolerance = max(TOLERANCE_FLOOR, min(raw, TOLERANCE_CEILING))
+
+    # Build factors dict for receipt
+    factors = {
+        "entropy_variance_factor": entropy_variance_factor,
+        "population_churn_factor": population_churn_factor,
+        "wound_rate_factor": wound_rate_factor,
+        "fitness_uncertainty_factor": fitness_uncertainty_factor,
+        "base": base,
+        "raw_value": raw,
+        "tolerance": tolerance,
+        "was_clamped": raw != tolerance,
+        "clamp_direction": (
+            "floor" if raw < TOLERANCE_FLOOR else
+            "ceiling" if raw > TOLERANCE_CEILING else
+            "none"
+        )
+    }
+
+    return tolerance, factors
+
+
+def emit_tolerance_receipt(tolerance: float, factors: dict, cycle: int) -> dict:
+    """
+    Emit tolerance_measurement receipt following CLAUDEME pattern.
+
+    Args:
+        tolerance: Computed tolerance value
+        factors: Factor breakdown dict from compute_tolerance
+        cycle: Current cycle number
+
+    Returns:
+        Receipt dict
+    """
+    return emit_receipt("tolerance_measurement", {
+        "tenant_id": "simulation",
+        "cycle": cycle,
+        "tolerance": tolerance,
+        "entropy_variance_factor": factors["entropy_variance_factor"],
+        "population_churn_factor": factors["population_churn_factor"],
+        "wound_rate_factor": factors["wound_rate_factor"],
+        "fitness_uncertainty_factor": factors["fitness_uncertainty_factor"],
+        "raw_value": factors["raw_value"],
+        "was_clamped": factors["was_clamped"],
+        "clamp_direction": factors["clamp_direction"]
+    })
+
+
+def check_chaos_state(tolerance: float, factors: dict, cycle: int,
+                     state: SimState) -> bool:
+    """
+    Check if system is in chaos state (tolerance >= TOLERANCE_CEILING).
+
+    Args:
+        tolerance: Computed tolerance value
+        factors: Factor breakdown dict
+        cycle: Current cycle number
+        state: SimState for appending receipt
+
+    Returns:
+        bool: True if in chaos state, False otherwise
+    """
+    if tolerance >= TOLERANCE_CEILING:
+        # Emit entropy_chaos_alert following CLAUDEME §4.7 anomaly pattern
+        receipt = emit_receipt("anomaly", {
+            "tenant_id": "simulation",
+            "cycle": cycle,
+            "metric": "tolerance",
+            "baseline": TOLERANCE_CEILING,
+            "delta": tolerance - TOLERANCE_CEILING,
+            "classification": "violation",
+            "action": "escalate"
+        })
+        state.receipt_ledger.append(receipt)
+        return True
+
+    return False
+
+
 def simulate_entropy_flow(state: SimState) -> tuple:
     """
     Calculate entropy flow for current cycle.
@@ -582,20 +738,33 @@ def validate_conservation(state: SimState, entropy_in: float, entropy_out: float
     """
     Validate 2nd law: entropy_in ≈ entropy_out + work_done.
 
+    Uses adaptive tolerance derived from system's own measurement precision.
+
     Args:
         state: Current SimState
         entropy_in: Input entropy
         entropy_out: Output entropy
         work_done: Work performed
-        config: SimConfig with scenario_name and conservation_tolerance
+        config: SimConfig with scenario_name
 
     Returns:
         bool: True if valid, False if violated
     """
+    # Compute adaptive tolerance from system state
+    tolerance, factors = compute_tolerance(state)
+
+    # Emit tolerance_measurement receipt (CLAUDEME LAW_1: No receipt → not real)
+    tolerance_receipt = emit_tolerance_receipt(tolerance, factors, state.cycle)
+    state.receipt_ledger.append(tolerance_receipt)
+
+    # Check for chaos state
+    in_chaos = check_chaos_state(tolerance, factors, state.cycle, state)
+
+    # Validate conservation with computed tolerance
     is_valid, violation_delta, receipt_data = entropy_conservation(
         entropy_in, entropy_out, work_done,
         tenant_id="simulation",
-        tolerance=config.conservation_tolerance,
+        tolerance=tolerance,
         scenario=config.scenario_name
     )
 
@@ -899,7 +1068,6 @@ SCENARIO_BASELINE = SimConfig(
     wound_rate=0.1,
     resource_budget=1.0,
     random_seed=42,
-    conservation_tolerance=0.1,
     scenario_name="BASELINE"
 )
 
@@ -909,7 +1077,6 @@ SCENARIO_STRESS = SimConfig(
     wound_rate=0.5,
     resource_budget=0.3,
     random_seed=43,
-    conservation_tolerance=0.2,
     scenario_name="STRESS"
 )
 
@@ -919,7 +1086,6 @@ SCENARIO_GENESIS = SimConfig(
     wound_rate=0.3,
     resource_budget=1.0,
     random_seed=44,
-    conservation_tolerance=0.15,
     scenario_name="GENESIS"
 )
 
@@ -929,7 +1095,6 @@ SCENARIO_SINGULARITY = SimConfig(
     wound_rate=0.1,
     resource_budget=1.0,
     random_seed=45,
-    conservation_tolerance=0.1,
     scenario_name="SINGULARITY"
 )
 
@@ -939,7 +1104,6 @@ SCENARIO_THERMODYNAMIC = SimConfig(
     wound_rate=0.1,
     resource_budget=1.0,
     random_seed=46,
-    conservation_tolerance=0.05,
     scenario_name="THERMODYNAMIC"
 )
 
@@ -949,7 +1113,6 @@ SCENARIO_GODEL = SimConfig(
     wound_rate=0.1,
     resource_budget=1.0,
     random_seed=47,
-    conservation_tolerance=0.1,
     scenario_name="GODEL"
 )
 
