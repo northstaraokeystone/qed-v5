@@ -34,7 +34,12 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Set
 
-import networkx as nx
+try:
+    import networkx as nx
+    HAS_NETWORKX = True
+except ImportError:
+    nx = None  # type: ignore
+    HAS_NETWORKX = False
 
 
 # =============================================================================
@@ -259,7 +264,7 @@ class BinderReceipt:
 # Core Functions (Receipt Monad transformers)
 # =============================================================================
 
-def compute_value(pattern_id: str, graph: nx.DiGraph) -> float:
+def compute_value(pattern_id: str, graph: Any) -> float:
     """
     Compute pattern value via graph centrality (Paradigm 2).
 
@@ -269,12 +274,15 @@ def compute_value(pattern_id: str, graph: nx.DiGraph) -> float:
 
     Args:
         pattern_id: Pattern to compute value for
-        graph: NetworkX DiGraph with pattern nodes
+        graph: NetworkX DiGraph with pattern nodes (requires networkx)
 
     Returns:
         Centrality value normalized to [0, 1]
-        Returns 0.0 if pattern not in graph
+        Returns 0.0 if pattern not in graph or networkx not available
     """
+    if not HAS_NETWORKX or graph is None:
+        return 0.0
+
     if graph.number_of_nodes() == 0:
         return 0.0
 
@@ -396,7 +404,7 @@ def evaluate_pattern(
     )
 
 
-def _build_graph_from_packets(packets: List[Dict[str, Any]]) -> nx.DiGraph:
+def _build_graph_from_packets(packets: List[Dict[str, Any]]) -> Any:
     """
     Build pattern usage graph from packet data.
 
@@ -407,8 +415,11 @@ def _build_graph_from_packets(packets: List[Dict[str, Any]]) -> nx.DiGraph:
         packets: List of packet dicts with pattern_usage
 
     Returns:
-        DiGraph with pattern nodes and co-occurrence edges
+        DiGraph with pattern nodes and co-occurrence edges (None if networkx not available)
     """
+    if not HAS_NETWORKX:
+        return None
+
     graph = nx.DiGraph()
 
     for packet in packets:
@@ -449,16 +460,20 @@ def _build_graph_from_packets(packets: List[Dict[str, Any]]) -> nx.DiGraph:
     return graph
 
 
-def _compute_all_centralities(graph: nx.DiGraph) -> Dict[str, float]:
+def _compute_all_centralities(graph: Any) -> Dict[str, float]:
     """
     Compute normalized PageRank centralities for all nodes.
 
     Args:
-        graph: NetworkX DiGraph
+        graph: NetworkX DiGraph (requires networkx)
 
     Returns:
         Dict mapping node ID to normalized centrality [0, 1]
+        Returns empty dict if networkx not available
     """
+    if not HAS_NETWORKX or graph is None:
+        return {}
+
     if graph.number_of_nodes() == 0:
         return {}
 
@@ -491,7 +506,7 @@ def _generate_receipt_id(packet_ids: List[str]) -> str:
 
 def bind(
     packets: List[Dict[str, Any]],
-    graph: Optional[nx.DiGraph] = None,
+    graph: Optional[Any] = None,
 ) -> List[Dict[str, Any]]:
     """
     Core Receipt Monad transformer (Paradigm 1).
