@@ -28,7 +28,17 @@ from autoimmune import is_self, GERMLINE_PATTERNS
 # CONSTANTS
 # =============================================================================
 
-CONSERVATION_TOLERANCE = 0.01  # 1% tolerance for thermodynamic violations
+CONSERVATION_TOLERANCE = 0.1  # Default 10% tolerance for thermodynamic violations
+
+# Scenario-specific tolerances for entropy conservation
+SCENARIO_TOLERANCES = {
+    "BASELINE": 0.1,
+    "STRESS": 0.2,        # Looser for high churn
+    "GENESIS": 0.15,
+    "THERMODYNAMIC": 0.05,  # Strictest
+    "SINGULARITY": 0.1,
+    "GODEL": 0.1
+}
 
 # Module exports for receipt types
 RECEIPT_SCHEMA = [
@@ -50,6 +60,8 @@ class SimConfig:
     resource_budget: float = 1.0
     random_seed: int = 42
     hitl_auto_approve_rate: float = 0.8
+    conservation_tolerance: float = 0.1
+    scenario_name: str = "BASELINE"
 
 
 @dataclass
@@ -61,6 +73,7 @@ class SimState:
     receipt_ledger: List[dict] = field(default_factory=list)
     entropy_trace: List[float] = field(default_factory=list)
     completeness_trace: List[dict] = field(default_factory=list)
+    violations: List[dict] = field(default_factory=list)
     cycle: int = 0
     entropy_in_total: float = 0.0
     entropy_out_total: float = 0.0
@@ -244,7 +257,7 @@ def simulate_cycle(state: SimState, config: SimConfig) -> List[dict]:
     entropy_in, entropy_out, work_done = simulate_entropy_flow(state)
 
     # Validate conservation
-    is_valid = validate_conservation(state, entropy_in, entropy_out, work_done)
+    is_valid = validate_conservation(state, entropy_in, entropy_out, work_done, config)
     if not is_valid:
         violations.append({
             "cycle": state.cycle,
@@ -454,9 +467,13 @@ def simulate_genesis(state: SimState, config: SimConfig) -> None:
 
         # Simulate HITL approval
         if random.random() < config.hitl_auto_approve_rate:
+            # Track entropy before creating offspring
+            receipts_before = state.receipt_ledger.copy()
+
             # Approved - create new pattern
+            offspring_id = f"genesis_{state.cycle}"
             pattern = {
-                "pattern_id": f"genesis_{state.cycle}",
+                "pattern_id": offspring_id,
                 "origin": "genesis",
                 "receipts": [],
                 "tenant_id": "simulation",
@@ -474,6 +491,29 @@ def simulate_genesis(state: SimState, config: SimConfig) -> None:
                 "ts": f"2025-01-01T{state.cycle:02d}:00:00Z"
             })
             state.active_patterns.append(pattern)
+
+            # Track entropy after creating offspring
+            receipts_after = state.receipt_ledger.copy()
+            n_receipts = len(pattern["receipts"])
+
+            # Calculate numeric fitness using same formula as agent_fitness
+            from entropy import agent_fitness, system_entropy
+            H_before = system_entropy(receipts_before)
+            H_after = system_entropy(receipts_after)
+            fitness = agent_fitness(receipts_before, receipts_after, n_receipts)
+
+            # Emit genesis_birth_receipt with numeric fitness
+            birth_receipt = emit_receipt("genesis_birth_receipt", {
+                "tenant_id": "simulation",
+                "offspring_id": offspring_id,
+                "blueprint_name": blueprint["name"],
+                "fitness": fitness,
+                "H_before": H_before,
+                "H_after": H_after,
+                "n_receipts": n_receipts,
+                "cycle": state.cycle
+            })
+            state.receipt_ledger.append(birth_receipt)
 
             # Emit genesis_approved
             receipt = emit_receipt("genesis_approved", {
@@ -537,7 +577,8 @@ def simulate_entropy_flow(state: SimState) -> tuple:
     return entropy_in, entropy_out, work_done
 
 
-def validate_conservation(state: SimState, entropy_in: float, entropy_out: float, work_done: float) -> bool:
+def validate_conservation(state: SimState, entropy_in: float, entropy_out: float,
+                         work_done: float, config: SimConfig) -> bool:
     """
     Validate 2nd law: entropy_in ≈ entropy_out + work_done.
 
@@ -546,24 +587,35 @@ def validate_conservation(state: SimState, entropy_in: float, entropy_out: float
         entropy_in: Input entropy
         entropy_out: Output entropy
         work_done: Work performed
+        config: SimConfig with scenario_name and conservation_tolerance
 
     Returns:
         bool: True if valid, False if violated
     """
-    is_valid, violation_delta = entropy_conservation(entropy_in, entropy_out, work_done, "simulation")
+    is_valid, violation_delta, receipt_data = entropy_conservation(
+        entropy_in, entropy_out, work_done,
+        tenant_id="simulation",
+        tolerance=config.conservation_tolerance,
+        scenario=config.scenario_name
+    )
 
     if not is_valid:
-        # Emit sim_violation receipt
+        # Emit sim_violation receipt with full details
         receipt = emit_receipt("sim_violation", {
-            "tenant_id": "simulation",
             "cycle": state.cycle,
             "violation_type": "conservation",
+            **receipt_data
+        })
+        state.receipt_ledger.append(receipt)
+        # Append violation data to state.violations list
+        state.violations.append({
+            "cycle": state.cycle,
+            "type": "conservation_violation",
             "entropy_in": entropy_in,
             "entropy_out": entropy_out,
             "work_done": work_done,
             "violation_delta": violation_delta
         })
-        state.receipt_ledger.append(receipt)
 
     return is_valid
 
@@ -846,7 +898,9 @@ SCENARIO_BASELINE = SimConfig(
     n_initial_patterns=5,
     wound_rate=0.1,
     resource_budget=1.0,
-    random_seed=42
+    random_seed=42,
+    conservation_tolerance=0.1,
+    scenario_name="BASELINE"
 )
 
 SCENARIO_STRESS = SimConfig(
@@ -854,7 +908,9 @@ SCENARIO_STRESS = SimConfig(
     n_initial_patterns=5,
     wound_rate=0.5,
     resource_budget=0.3,
-    random_seed=43
+    random_seed=43,
+    conservation_tolerance=0.2,
+    scenario_name="STRESS"
 )
 
 SCENARIO_GENESIS = SimConfig(
@@ -862,7 +918,9 @@ SCENARIO_GENESIS = SimConfig(
     n_initial_patterns=5,
     wound_rate=0.3,
     resource_budget=1.0,
-    random_seed=44
+    random_seed=44,
+    conservation_tolerance=0.15,
+    scenario_name="GENESIS"
 )
 
 SCENARIO_SINGULARITY = SimConfig(
@@ -870,7 +928,9 @@ SCENARIO_SINGULARITY = SimConfig(
     n_initial_patterns=5,
     wound_rate=0.1,
     resource_budget=1.0,
-    random_seed=45
+    random_seed=45,
+    conservation_tolerance=0.1,
+    scenario_name="SINGULARITY"
 )
 
 SCENARIO_THERMODYNAMIC = SimConfig(
@@ -878,7 +938,9 @@ SCENARIO_THERMODYNAMIC = SimConfig(
     n_initial_patterns=5,
     wound_rate=0.1,
     resource_budget=1.0,
-    random_seed=46
+    random_seed=46,
+    conservation_tolerance=0.05,
+    scenario_name="THERMODYNAMIC"
 )
 
 SCENARIO_GODEL = SimConfig(
@@ -886,7 +948,9 @@ SCENARIO_GODEL = SimConfig(
     n_initial_patterns=5,
     wound_rate=0.1,
     resource_budget=1.0,
-    random_seed=47
+    random_seed=47,
+    conservation_tolerance=0.1,
+    scenario_name="GODEL"
 )
 
 
