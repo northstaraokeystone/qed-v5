@@ -48,7 +48,12 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 from uuid import uuid4
 
-import networkx as nx
+try:
+    import networkx as nx
+    HAS_NETWORKX = True
+except ImportError:
+    nx = None  # type: ignore
+    HAS_NETWORKX = False
 
 from binder import QueryPredicate
 
@@ -380,7 +385,7 @@ def get_latest(n: int = 10, log_path: str = DEFAULT_LOG_PATH) -> List[EventRecor
 def query(
     events: List[EventRecord],
     predicate: QueryPredicate,
-    graph: Optional[nx.DiGraph] = None,
+    graph: Optional[Any] = None,
 ) -> List[EventRecord]:
     """
     Mode as projection - filter events through QueryPredicate lens.
@@ -392,7 +397,7 @@ def query(
     Args:
         events: List of EventRecords to filter
         predicate: QueryPredicate lens defining visibility rules
-        graph: Optional DiGraph for centrality-based filtering
+        graph: Optional DiGraph for centrality-based filtering (requires networkx)
 
     Returns:
         List of EventRecords visible under this predicate lens
@@ -407,7 +412,7 @@ def query(
         payload = event.payload
 
         # Compute "centrality" for this event (if graph provided)
-        if graph is not None and "pattern_id" in payload:
+        if HAS_NETWORKX and graph is not None and "pattern_id" in payload:
             pattern_id = payload["pattern_id"]
             if pattern_id in graph:
                 # Use PageRank centrality
@@ -436,7 +441,7 @@ def query(
 def replay(
     events: List[EventRecord],
     counterfactual: Dict,
-    graph: Optional[nx.DiGraph] = None,
+    graph: Optional[Any] = None,
 ) -> List[Dict]:
     """
     Backward causation - re-evaluate events under counterfactual rules.
@@ -524,6 +529,49 @@ def replay(
 
 
 # =============================================================================
+# EventStream Class (for convenience)
+# =============================================================================
+
+class EventStream:
+    """
+    Convenience class providing access to event stream functionality.
+
+    This is a stateless wrapper around the module's functional API.
+    All operations are pure functions (except append which persists to disk).
+    """
+
+    @staticmethod
+    def stream(receipts: List[Dict]) -> List[Dict]:
+        """Wrap receipts as EventRecords with hash chain."""
+        return stream(receipts)
+
+    @staticmethod
+    def append(event: EventRecord, log_path: str = DEFAULT_LOG_PATH) -> Dict:
+        """Append EventRecord to JSONL log."""
+        return append(event, log_path)
+
+    @staticmethod
+    def get_latest(n: int = 10, log_path: str = DEFAULT_LOG_PATH) -> List[EventRecord]:
+        """Retrieve n most recent events from log."""
+        return get_latest(n, log_path)
+
+    @staticmethod
+    def query(events: List[EventRecord], predicate: QueryPredicate, graph: Optional[Any] = None) -> List[EventRecord]:
+        """Filter events through QueryPredicate lens."""
+        return query(events, predicate, graph)
+
+    @staticmethod
+    def replay(events: List[EventRecord], counterfactual: Dict, graph: Optional[Any] = None) -> List[Dict]:
+        """Re-evaluate events under counterfactual rules."""
+        return replay(events, counterfactual, graph)
+
+    @staticmethod
+    def verify_chain(events: List[EventRecord]) -> Tuple[bool, Optional[str]]:
+        """Verify hash chain integrity."""
+        return verify_chain(events)
+
+
+# =============================================================================
 # Module Exports
 # =============================================================================
 
@@ -535,6 +583,8 @@ __all__ = [
     "HASH_ALGO",
     # Dataclass
     "EventRecord",
+    # Class
+    "EventStream",
     # Core functions
     "stream",
     "append",
