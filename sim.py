@@ -42,6 +42,8 @@ GENESIS_THRESHOLD = 3.0  # Bits of observation cost that can spark emergence
 VIRTUAL_LIFESPAN = 3  # Cycles before collapse back to SUPERPOSITION
 HAWKING_COEFFICIENT = 0.1  # Entropy emission rate at boundary
 LANDAUER_COEFFICIENT = 1.0  # Scales observation cost (calibrated, do not change)
+FLUX_WINDOW = 10  # Cycles to average for flux calculation
+CRITICAL_EMERGENCE_RATIO = 0.9  # Threshold for system criticality
 
 # Module exports for receipt types
 RECEIPT_SCHEMA = [
@@ -98,6 +100,10 @@ class SimState:
     deaths_this_cycle: int = 0
     superposition_transitions_this_cycle: int = 0
     wounds_this_cycle: int = 0
+    # Hawking flux tracking
+    flux_history: list = field(default_factory=list)
+    collapse_count_this_cycle: int = 0
+    emergence_count_this_cycle: int = 0
 
 
 @dataclass(frozen=True)
@@ -271,6 +277,8 @@ def simulate_cycle(state: SimState, config: SimConfig) -> List[dict]:
     state.deaths_this_cycle = 0
     state.superposition_transitions_this_cycle = 0
     state.wounds_this_cycle = 0
+    state.collapse_count_this_cycle = 0
+    state.emergence_count_this_cycle = 0
 
     # CYCLE START: Vacuum fluctuation and reset boundary emissions
     state.vacuum_floor = vacuum_fluctuation()
@@ -351,6 +359,17 @@ def simulate_cycle(state: SimState, config: SimConfig) -> List[dict]:
         state, state.cycle, H_start, H_end, H_observation, balance
     )
     state.receipt_ledger.append(entropy_state_receipt)
+
+    # Compute and emit Hawking flux metrics
+    flux, trend = compute_hawking_flux(state)
+    collapse_rate = compute_collapse_rate(state)
+    emergence_rate = compute_emergence_rate(state)
+    criticality = compute_system_criticality(state, state.cycle)
+
+    hawking_flux_receipt = emit_hawking_flux_receipt(
+        state, state.cycle, flux, trend, collapse_rate, emergence_rate, criticality
+    )
+    state.receipt_ledger.append(hawking_flux_receipt)
 
     # Validate conservation (new signature)
     is_valid = validate_conservation(state)
@@ -520,6 +539,9 @@ def simulate_selection(state: SimState) -> None:
             pattern["state"] = PatternState.SUPERPOSITION.value
             pattern["virtual_lifespan"] = 0
             virtual_collapsed.append(pattern)
+
+            # Increment collapse counter
+            state.collapse_count_this_cycle += 1
 
             # Emit virtual_collapse receipt
             receipt = emit_receipt("virtual_collapse", {
@@ -1150,6 +1172,9 @@ def attempt_spontaneous_emergence(state: SimState, H_observation: float) -> Opti
     selected_pattern["virtual_lifespan"] = VIRTUAL_LIFESPAN
     state.virtual_patterns.append(selected_pattern)
 
+    # Increment emergence counter
+    state.emergence_count_this_cycle += 1
+
     # Emit spontaneous_emergence receipt
     receipt = emit_receipt("spontaneous_emergence", {
         "tenant_id": "simulation",
@@ -1202,6 +1227,9 @@ def process_virtual_patterns(state: SimState) -> List[str]:
             to_remove.append(i)
             collapsed_ids.append(pattern["pattern_id"])
 
+            # Increment collapse counter
+            state.collapse_count_this_cycle += 1
+
             # Emit virtual_collapse receipt
             receipt = emit_receipt("virtual_collapse", {
                 "tenant_id": "simulation",
@@ -1218,6 +1246,135 @@ def process_virtual_patterns(state: SimState) -> List[str]:
         state.virtual_patterns.pop(i)
 
     return collapsed_ids
+
+
+def compute_hawking_flux(state: SimState) -> tuple[float, str]:
+    """
+    Compute Hawking entropy flux rate over rolling window.
+
+    Flux = Δ(hawking_emissions) / Δt over FLUX_WINDOW cycles.
+
+    Args:
+        state: Current SimState
+
+    Returns:
+        Tuple of (flux, trend) where:
+        - flux: Rate of change of hawking emissions
+        - trend: "increasing", "decreasing", or "stable"
+    """
+    # Append current cycle's emissions to history
+    state.flux_history.append(state.hawking_emissions_this_cycle)
+
+    # Trim to keep at most FLUX_WINDOW * 2 entries
+    if len(state.flux_history) > FLUX_WINDOW * 2:
+        state.flux_history = state.flux_history[-FLUX_WINDOW * 2:]
+
+    # Need at least 2 data points to compute flux
+    if len(state.flux_history) < 2:
+        return (0.0, "insufficient_data")
+
+    # Calculate flux
+    if len(state.flux_history) >= FLUX_WINDOW:
+        # Compare recent average to older average
+        flux = (state.flux_history[-1] - state.flux_history[-FLUX_WINDOW]) / FLUX_WINDOW
+    else:
+        # Not enough history - compute average delta
+        deltas = [state.flux_history[i] - state.flux_history[i-1]
+                 for i in range(1, len(state.flux_history))]
+        flux = sum(deltas) / len(deltas) if deltas else 0.0
+
+    # Determine trend
+    if flux > 0.01:
+        trend = "increasing"
+    elif flux < -0.01:
+        trend = "decreasing"
+    else:
+        trend = "stable"
+
+    return (flux, trend)
+
+
+def compute_collapse_rate(state: SimState) -> float:
+    """
+    Compute collapse rate (VIRTUAL → SUPERPOSITION transitions per cycle).
+
+    Args:
+        state: Current SimState
+
+    Returns:
+        float: Collapse rate for this cycle
+    """
+    return float(state.collapse_count_this_cycle)
+
+
+def compute_emergence_rate(state: SimState) -> float:
+    """
+    Compute emergence rate (SUPERPOSITION → VIRTUAL transitions per cycle).
+
+    Args:
+        state: Current SimState
+
+    Returns:
+        float: Emergence rate for this cycle
+    """
+    return float(state.emergence_count_this_cycle)
+
+
+def compute_system_criticality(state: SimState, cycle: int) -> float:
+    """
+    Compute system criticality metric.
+
+    Criticality = cumulative_emergences / cycle
+    This approaches 1.0 when system is at criticality (494/500 ≈ 0.988).
+
+    Args:
+        state: Current SimState
+        cycle: Current cycle number
+
+    Returns:
+        float: System criticality (0.0 to ~1.0)
+    """
+    if cycle == 0:
+        return 0.0
+
+    # Count total emergences from receipt ledger
+    total_emergences = sum(1 for r in state.receipt_ledger
+                          if r.get("receipt_type") == "spontaneous_emergence")
+
+    return total_emergences / cycle
+
+
+def emit_hawking_flux_receipt(state: SimState, cycle: int, flux: float,
+                              trend: str, collapse_rate: float,
+                              emergence_rate: float, criticality: float) -> dict:
+    """
+    Emit hawking_flux receipt with rate metrics.
+
+    Per CLAUDEME LAW_1: No receipt → not real
+
+    Args:
+        state: Current SimState
+        cycle: Current cycle number
+        flux: Hawking entropy flux rate
+        trend: Flux trend string
+        collapse_rate: Collapse rate this cycle
+        emergence_rate: Emergence rate this cycle
+        criticality: System criticality metric
+
+    Returns:
+        Receipt dict
+    """
+    return emit_receipt("hawking_flux", {
+        "tenant_id": "simulation",
+        "cycle": cycle,
+        "hawking_emissions_this_cycle": state.hawking_emissions_this_cycle,
+        "hawking_flux": flux,
+        "flux_trend": trend,
+        "collapse_rate": collapse_rate,
+        "emergence_rate": emergence_rate,
+        "system_criticality": criticality,
+        "flux_history_length": len(state.flux_history)
+    })
 
 
 def emit_hawking_entropy(state: SimState, pattern: dict) -> float:
