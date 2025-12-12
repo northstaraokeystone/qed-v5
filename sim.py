@@ -51,10 +51,10 @@ CRITICALITY_PHASE_TRANSITION = 1.0  # The quantum leap point
 ALERT_COOLDOWN_CYCLES = 50  # Prevent alert spam near threshold
 
 # Perturbation constants (stochastic GW kicks) — tuned via Grok analysis
-PERTURBATION_PROBABILITY = 0.35  # 35% chance per cycle (more frequent events)
-PERTURBATION_MAGNITUDE = 0.2     # size of kick (stronger kicks)
-PERTURBATION_DECAY = 0.45        # kick decays 45% per cycle (base decay before non-linear factor)
-PERTURBATION_VARIANCE = 0.5      # chaotic variance in magnitude (amplified chaos)
+PERTURBATION_PROBABILITY = 0.4  # 40% chance per cycle (more frequent events)
+PERTURBATION_MAGNITUDE = 0.22    # size of kick (stronger kicks)
+PERTURBATION_DECAY = 0.4         # kick decays 40% per cycle (slower decay)
+PERTURBATION_VARIANCE = 0.55     # chaotic variance in magnitude (amplified chaos)
 BASIN_ESCAPE_THRESHOLD = 0.2     # escape detection threshold (higher bar)
 CLUSTER_LAMBDA = 3               # Poisson parameter for cluster size (avg 3 kicks per event)
 MAX_CLUSTER_SIZE = 5             # Safety cap on cluster size (prevent explosion)
@@ -68,7 +68,7 @@ EVOLUTION_WINDOW = 500           # cycles between evolution snapshots
 MAX_MAGNITUDE_FACTOR = 3.0       # cap on magnitude multiplier (prevent explosion)
 
 # Adaptive feedback constants (threshold-based state changes)
-ADAPTIVE_THRESHOLD = 0.4         # triggers probability boost when boost > threshold
+ADAPTIVE_THRESHOLD = 0.45        # triggers probability boost when boost > threshold
 SYNC_BOOST = 0.2                 # probability increase amount for synced kicks (replaces ADAPTIVE_BOOST)
 MAX_PROBABILITY = 0.5            # cap to prevent runaway
 
@@ -105,9 +105,14 @@ CRYSTALLIZED_BEACON_BOOST = 2.0
 TUNNELING_THRESHOLD = 0.9
 
 # Emergent archetype discovery constants
-AUTOCATALYSIS_AMPLIFICATION = 0.25  # boost to captures from crystallized crystals
+AUTOCATALYSIS_AMPLIFICATION = 0.3  # boost to captures from crystallized crystals
 REPLICATION_THRESHOLD = 50  # captures needed before crystal can replicate
 ARCHETYPE_DOMINANCE_THRESHOLD = 0.6  # 60% of one effect type = that archetype
+
+# Compound growth constants (bigger crystals capture faster)
+GROWTH_FACTOR = 0.2  # compound growth rate: boost = 1 + 0.2 * (size / 10)
+MAX_GROWTH_BOOST = 2.0  # cap to prevent runaway (size 50 = 2.0x)
+BRANCH_INITIATION_THRESHOLD = 5  # alert when exceeded
 
 # Effect types for archetype discovery (wave function collapse)
 EFFECT_ENTROPY_INCREASE = "ENTROPY_INCREASE"
@@ -187,6 +192,8 @@ class Crystal:
         "SYMMETRY_BREAK": 0
     })  # count of each effect type captured
     parent_crystal_id: Optional[int] = None  # for replicated crystals
+    generation: int = 0  # depth in family tree (0=original, 1=child, 2=grandchild)
+    size_50_reached: bool = False  # track if crystal has exceeded size 50
 
 # =============================================================================
 # DATACLASSES (3 required)
@@ -285,6 +292,11 @@ class SimState:
     crystals: List[Crystal] = field(default_factory=list)  # solidified structures
     total_captures: int = 0  # total kicks captured across all seeds
     crystals_formed: int = 0  # number of crystals that reached threshold
+    # Compound growth tracking fields
+    max_generation: int = 0  # deepest generation reached (0=original only)
+    size_50_count: int = 0  # crystals that exceeded size 50
+    replication_events: int = 0  # total replications (self-replication loops)
+    total_branches: int = 0  # total branch crystals created
 
 
 @dataclass(frozen=True)
@@ -338,7 +350,12 @@ def run_multiverse(n_universes: int, n_cycles: int, base_seed: int = 42) -> dict
         "total_symmetry_breaks": 0,
         "total_captures": 0,
         "total_crystals_formed": 0,
-        "universes_crystallized": 0
+        "universes_crystallized": 0,
+        # Compound growth tracking
+        "total_replication_events": 0,
+        "max_generation": 0,
+        "total_size_50": 0,
+        "total_branches": 0
     }
 
     for i in range(n_universes):
@@ -365,7 +382,12 @@ def run_multiverse(n_universes: int, n_cycles: int, base_seed: int = 42) -> dict
             "symmetry_breaks": result.final_state.symmetry_breaks,
             "structure_formed": result.final_state.structure_formed,
             "captures": result.final_state.total_captures,
-            "crystals_formed": result.final_state.crystals_formed
+            "crystals_formed": result.final_state.crystals_formed,
+            # Compound growth tracking
+            "replication_events": result.final_state.replication_events,
+            "max_generation": result.final_state.max_generation,
+            "size_50_count": result.final_state.size_50_count,
+            "total_branches": result.final_state.total_branches
         })
 
         # Aggregate statistics
@@ -378,6 +400,11 @@ def run_multiverse(n_universes: int, n_cycles: int, base_seed: int = 42) -> dict
         aggregated_stats["total_symmetry_breaks"] += result.final_state.symmetry_breaks
         aggregated_stats["total_captures"] += result.final_state.total_captures
         aggregated_stats["total_crystals_formed"] += result.final_state.crystals_formed
+        # Compound growth aggregation
+        aggregated_stats["total_replication_events"] += result.final_state.replication_events
+        aggregated_stats["max_generation"] = max(aggregated_stats["max_generation"], result.final_state.max_generation)
+        aggregated_stats["total_size_50"] += result.final_state.size_50_count
+        aggregated_stats["total_branches"] += result.final_state.total_branches
         if result.statistics["completeness_achieved"]:
             aggregated_stats["completeness_achieved_count"] += 1
         if result.final_state.structure_formed:
@@ -394,6 +421,10 @@ def run_multiverse(n_universes: int, n_cycles: int, base_seed: int = 42) -> dict
     aggregated_stats["avg_symmetry_breaks"] = aggregated_stats["total_symmetry_breaks"] / n_universes
     aggregated_stats["avg_captures"] = aggregated_stats["total_captures"] / n_universes
     aggregated_stats["avg_crystals_formed"] = aggregated_stats["total_crystals_formed"] / n_universes
+    # Compound growth averages
+    aggregated_stats["avg_replication_events"] = aggregated_stats["total_replication_events"] / n_universes
+    aggregated_stats["avg_size_50"] = aggregated_stats["total_size_50"] / n_universes
+    aggregated_stats["avg_branches"] = aggregated_stats["total_branches"] / n_universes
 
     # Emit multiverse_complete receipt
     complete_receipt = emit_receipt("multiverse_complete", {
@@ -1870,6 +1901,26 @@ def initialize_nucleation(state: SimState) -> None:
         state.crystals.append(crystal)
 
 
+def growth_boost(crystal: Crystal) -> float:
+    """
+    Calculate compound boost based on crystal size.
+
+    Bigger crystals capture faster, enabling replication threshold.
+    boost = 1 + GROWTH_FACTOR * (size / 10), capped at MAX_GROWTH_BOOST.
+
+    Size 10 = 1.2x, Size 30 = 1.6x, Size 50 = 2.0x (capped).
+
+    Args:
+        crystal: Crystal to calculate boost for
+
+    Returns:
+        float: Growth boost multiplier (1.0 to MAX_GROWTH_BOOST)
+    """
+    size = len(crystal.members)
+    boost = 1.0 + GROWTH_FACTOR * (size / 10.0)
+    return min(boost, MAX_GROWTH_BOOST)
+
+
 def counselor_score(counselor: Counselor, seed: Seed, kick_phase: float,
                     kick_resonant: bool, kick_direction: int) -> float:
     """
@@ -1916,6 +1967,9 @@ def counselor_compete(state: SimState, kick_receipt: dict, kick_phase: float,
     """
     Counselors compete to capture a kick. Best match wins.
 
+    Applies compound growth boost: bigger crystals capture faster.
+    Also applies autocatalysis amplification for crystallized crystals.
+
     Args:
         state: Current SimState
         kick_receipt: Kick receipt (perturbation receipt)
@@ -1931,7 +1985,20 @@ def counselor_compete(state: SimState, kick_receipt: dict, kick_phase: float,
 
     for counselor in state.counselors:
         seed = state.seeds[counselor.seed_id]
+        crystal = state.crystals[counselor.seed_id]
+
+        # Base similarity from counselor_score
         similarity = counselor_score(counselor, seed, kick_phase, kick_resonant, kick_direction)
+
+        # Apply autocatalysis amplification for crystallized crystals
+        if crystal.crystallized:
+            similarity *= (1.0 + AUTOCATALYSIS_AMPLIFICATION)
+
+        # Apply compound growth boost (bigger crystals capture faster)
+        similarity *= growth_boost(crystal)
+
+        # Cap at 1.0
+        similarity = min(similarity, 1.0)
 
         if similarity > best_similarity:
             best_similarity = similarity
@@ -2013,6 +2080,23 @@ def counselor_capture(state: SimState, seed_id: int, kick_receipt: dict,
     # Update seed captures
     seed.captures += 1
     state.total_captures += 1
+
+    # Check for size 50 threshold (first time only)
+    current_size = len(crystal.members)
+    if current_size >= 50 and not crystal.size_50_reached:
+        crystal.size_50_reached = True
+        state.size_50_count += 1
+        # Emit size_threshold_receipt
+        emit_receipt("size_threshold", {
+            "tenant_id": "simulation",
+            "receipt_type": "size_threshold",
+            "cycle": cycle,
+            "crystal_id": crystal.crystal_id,
+            "size": current_size,
+            "first_time": True,
+            "growth_boost": growth_boost(crystal),
+            "generation": crystal.generation
+        })
 
     # Compute crystal coherence (average of phase alignment)
     import math
@@ -2277,6 +2361,9 @@ def check_replication(state: SimState, cycle: int) -> Optional[dict]:
         )
         state.counselors.append(child_counselor)
 
+        # Calculate child generation (parent + 1)
+        child_generation = crystal.generation + 1
+
         # Create child crystal - NO archetype, empty effect_distribution
         child_crystal = Crystal(
             crystal_id=child_id,
@@ -2291,9 +2378,27 @@ def check_replication(state: SimState, cycle: int) -> Optional[dict]:
                 "RESONANCE_TRIGGER": 0,
                 "SYMMETRY_BREAK": 0
             },
-            parent_crystal_id=crystal.crystal_id  # Track lineage
+            parent_crystal_id=crystal.crystal_id,  # Track lineage
+            generation=child_generation  # Depth in family tree
         )
         state.crystals.append(child_crystal)
+
+        # Update compound growth tracking
+        state.max_generation = max(state.max_generation, child_generation)
+        state.replication_events += 1
+        state.total_branches += 1
+
+        # Emit generation receipt (self-replication loop tracked)
+        emit_receipt("generation", {
+            "tenant_id": "simulation",
+            "receipt_type": "generation",
+            "cycle": cycle,
+            "crystal_id": child_id,
+            "generation": child_generation,
+            "parent_id": crystal.crystal_id,
+            "parent_generation": crystal.generation,
+            "lineage_depth": child_generation
+        })
 
         # Emit replication receipt
         return emit_receipt("replication", {
