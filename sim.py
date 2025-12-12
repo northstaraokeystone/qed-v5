@@ -204,6 +204,107 @@ class SimResult:
 # CORE SIMULATION FUNCTIONS (9 required)
 # =============================================================================
 
+def run_multiverse(n_universes: int, n_cycles: int, base_seed: int = 42) -> dict:
+    """
+    Run multiple parallel simulations (multiverse).
+
+    Each universe runs with a different random seed to explore different
+    evolutionary trajectories. Returns aggregated statistics across all universes.
+
+    Args:
+        n_universes: Number of parallel universes to simulate
+        n_cycles: Number of cycles per universe
+        base_seed: Base random seed (each universe gets base_seed + i)
+
+    Returns:
+        dict: Aggregated multiverse results with statistics and all universe results
+    """
+    # Emit multiverse_start receipt
+    multiverse_receipt = emit_receipt("multiverse_start", {
+        "tenant_id": "simulation",
+        "n_universes": n_universes,
+        "n_cycles": n_cycles,
+        "base_seed": base_seed
+    })
+
+    # Run all universes
+    universe_results = []
+    aggregated_stats = {
+        "total_births": 0,
+        "total_deaths": 0,
+        "total_recombinations": 0,
+        "total_violations": 0,
+        "completeness_achieved_count": 0,
+        "structure_formed_count": 0,
+        "total_persistent_clusters": 0,
+        "total_proto_forms": 0,
+        "total_symmetry_breaks": 0
+    }
+
+    for i in range(n_universes):
+        # Create config for this universe
+        config = SimConfig(
+            n_cycles=n_cycles,
+            random_seed=base_seed + i,
+            scenario_name=f"MULTIVERSE_{i}"
+        )
+
+        # Run simulation
+        result = run_simulation(config)
+
+        # Track universe result
+        universe_results.append({
+            "universe_id": i,
+            "seed": base_seed + i,
+            "violations": len(result.violations),
+            "final_population": result.statistics["final_population"],
+            "births": result.statistics["births"],
+            "deaths": result.statistics["deaths"],
+            "persistent_clusters": result.final_state.persistent_clusters,
+            "proto_forms": result.final_state.proto_form_count,
+            "symmetry_breaks": result.final_state.symmetry_breaks,
+            "structure_formed": result.final_state.structure_formed
+        })
+
+        # Aggregate statistics
+        aggregated_stats["total_births"] += result.statistics["births"]
+        aggregated_stats["total_deaths"] += result.statistics["deaths"]
+        aggregated_stats["total_recombinations"] += result.statistics["recombinations"]
+        aggregated_stats["total_violations"] += len(result.violations)
+        aggregated_stats["total_persistent_clusters"] += result.final_state.persistent_clusters
+        aggregated_stats["total_proto_forms"] += result.final_state.proto_form_count
+        aggregated_stats["total_symmetry_breaks"] += result.final_state.symmetry_breaks
+        if result.statistics["completeness_achieved"]:
+            aggregated_stats["completeness_achieved_count"] += 1
+        if result.final_state.structure_formed:
+            aggregated_stats["structure_formed_count"] += 1
+
+    # Compute averages
+    aggregated_stats["avg_births"] = aggregated_stats["total_births"] / n_universes
+    aggregated_stats["avg_deaths"] = aggregated_stats["total_deaths"] / n_universes
+    aggregated_stats["avg_violations"] = aggregated_stats["total_violations"] / n_universes
+    aggregated_stats["avg_persistent_clusters"] = aggregated_stats["total_persistent_clusters"] / n_universes
+    aggregated_stats["avg_proto_forms"] = aggregated_stats["total_proto_forms"] / n_universes
+    aggregated_stats["avg_symmetry_breaks"] = aggregated_stats["total_symmetry_breaks"] / n_universes
+
+    # Emit multiverse_complete receipt
+    complete_receipt = emit_receipt("multiverse_complete", {
+        "tenant_id": "simulation",
+        "n_universes": n_universes,
+        "n_cycles": n_cycles,
+        "aggregated_stats": aggregated_stats
+    })
+
+    return {
+        "n_universes": n_universes,
+        "n_cycles": n_cycles,
+        "universe_results": universe_results,
+        "aggregated_stats": aggregated_stats,
+        "multiverse_start_receipt": multiverse_receipt,
+        "multiverse_complete_receipt": complete_receipt
+    }
+
+
 def run_simulation(config: SimConfig) -> SimResult:
     """
     Main entry point for simulation.
@@ -2681,6 +2782,7 @@ __all__ = [
     "SimState",
     "SimResult",
     # Core functions
+    "run_multiverse",
     "run_simulation",
     "initialize_state",
     "simulate_cycle",
