@@ -51,10 +51,10 @@ CRITICALITY_PHASE_TRANSITION = 1.0  # The quantum leap point
 ALERT_COOLDOWN_CYCLES = 50  # Prevent alert spam near threshold
 
 # Perturbation constants (stochastic GW kicks)
-PERTURBATION_PROBABILITY = 0.15  # 15% chance per cycle (more frequent events)
-PERTURBATION_MAGNITUDE = 0.1     # size of kick (stronger kicks)
-PERTURBATION_DECAY = 0.65        # kick decays 35% per cycle (base decay before non-linear factor)
-PERTURBATION_VARIANCE = 0.3      # chaotic variance in magnitude (amplified chaos)
+PERTURBATION_PROBABILITY = 0.2   # 20% chance per cycle (more frequent events)
+PERTURBATION_MAGNITUDE = 0.12    # size of kick (stronger kicks)
+PERTURBATION_DECAY = 0.6         # kick decays 40% per cycle (base decay before non-linear factor)
+PERTURBATION_VARIANCE = 0.35     # chaotic variance in magnitude (amplified chaos)
 BASIN_ESCAPE_THRESHOLD = 0.2     # escape detection threshold (higher bar)
 CLUSTER_LAMBDA = 3               # Poisson parameter for cluster size (avg 3 kicks per event)
 MAX_CLUSTER_SIZE = 5             # Safety cap on cluster size (prevent explosion)
@@ -65,9 +65,15 @@ EVOLUTION_WINDOW = 500           # cycles between evolution snapshots
 MAX_MAGNITUDE_FACTOR = 3.0       # cap on magnitude multiplier (prevent explosion)
 
 # Adaptive feedback constants (threshold-based state changes)
-ADAPTIVE_THRESHOLD = 0.2         # triggers probability boost when boost > threshold
-ADAPTIVE_BOOST = 0.05            # probability increase amount
+ADAPTIVE_THRESHOLD = 0.25        # triggers probability boost when boost > threshold
+SYNC_BOOST = 0.1                 # probability increase amount for synced kicks (replaces ADAPTIVE_BOOST)
 MAX_PROBABILITY = 0.5            # cap to prevent runaway
+
+# Phase synchronization constants (wave interference)
+PHASE_SYNC_PROBABILITY = 0.4     # 40% chance kick syncs with previous
+PHASE_SYNC_WINDOW = 3.14159 / 4  # ~45° window for sync detection (π/4 radians)
+CLUSTER_THRESHOLD = 5            # minimum consecutive same-type receipts for cluster
+SYMMETRY_SAMPLE_SIZE = 100       # only check last N receipts for symmetry (performance optimization)
 
 # Module exports for receipt types
 RECEIPT_SCHEMA = [
@@ -149,6 +155,14 @@ class SimState:
     window_perturbations: int = 0  # perturbations in current window
     last_evolution_cycle: int = 0  # track last snapshot cycle
     window_boost_samples: list = field(default_factory=list)  # boost samples for avg
+    # Phase tracking fields (wave interference)
+    last_phase: float = 0.0  # previous kick's phase (radians)
+    sync_count: int = 0  # total phase syncs
+    cluster_count: int = 0  # clusters detected
+    symmetry_breaks: int = 0  # symmetry break events
+    consecutive_same_type: int = 0  # for cluster detection
+    last_receipt_type: str = ""  # for cluster detection
+    last_symmetry_metric: float = 0.0  # for symmetry break detection
 
 
 @dataclass(frozen=True)
@@ -435,6 +449,10 @@ def simulate_cycle(state: SimState, config: SimConfig) -> List[dict]:
     if perturbation_receipt:
         state.receipt_ledger.append(perturbation_receipt)
         state.window_perturbations += 1  # Track for evolution window
+        # Check for cluster detection on perturbation receipts
+        cluster_receipt = check_cluster(state, perturbation_receipt["receipt_type"])
+        if cluster_receipt:
+            state.receipt_ledger.append(cluster_receipt)
 
     # Basin escape check
     basin_escape_receipt = check_basin_escape(state, state.cycle)
@@ -449,6 +467,11 @@ def simulate_cycle(state: SimState, config: SimConfig) -> List[dict]:
     evolution_receipt = check_evolution_window(state, state.cycle)
     if evolution_receipt:
         state.receipt_ledger.append(evolution_receipt)
+
+    # Symmetry break check (ONLY at evolution window intervals for performance)
+    symmetry_break_receipt = check_symmetry_break(state, state.receipt_ledger, state.cycle)
+    if symmetry_break_receipt:
+        state.receipt_ledger.append(symmetry_break_receipt)
 
     # Effective criticality for threshold checks
     effective_crit = criticality + state.perturbation_boost
@@ -862,26 +885,113 @@ def poisson_manual(lam: float) -> int:
     return k - 1
 
 
-def compute_effective_probability(state: SimState) -> float:
+def generate_phase(state: SimState, synced: bool) -> float:
     """
-    Compute effective perturbation probability with adaptive feedback.
+    Generate phase for perturbation kick (wave interference model).
 
-    Base probability increases when perturbation_boost > ADAPTIVE_THRESHOLD.
-    This creates a feedback loop: threshold crossings boost probability.
+    If synced: small deviation from previous phase (coherent wave).
+    If not synced: random phase (incoherent wave).
+
+    Args:
+        state: Current SimState with last_phase
+        synced: Whether to sync with previous phase
+
+    Returns:
+        float: Phase in radians (0 to 2π)
+    """
+    import math
+
+    if synced:
+        # Small deviation from previous phase (coherent)
+        phase = state.last_phase + random.gauss(0, 0.1)
+    else:
+        # Random phase (incoherent)
+        phase = random.uniform(0, 2 * math.pi)
+
+    # Normalize to 0-2π range
+    phase = phase % (2 * math.pi)
+    return phase
+
+
+def check_phase_sync(state: SimState) -> tuple[bool, float]:
+    """
+    Check if current kick should sync with previous phase.
+
+    Stochastic sync: PHASE_SYNC_PROBABILITY chance of attempting sync.
+    Sync is successful if within PHASE_SYNC_WINDOW of previous phase.
+
+    Args:
+        state: Current SimState with last_phase
+
+    Returns:
+        Tuple of (synced: bool, phase: float)
+    """
+    import math
+
+    # Stochastic decision: try to sync?
+    if random.random() < PHASE_SYNC_PROBABILITY:
+        # Attempt sync
+        phase = generate_phase(state, synced=True)
+    else:
+        # No sync attempt
+        phase = generate_phase(state, synced=False)
+
+    # Check if actually synced (within window, accounting for wraparound)
+    phase_diff = abs(phase - state.last_phase)
+    # Handle wraparound: min(diff, 2π - diff)
+    phase_diff = min(phase_diff, 2 * math.pi - phase_diff)
+    synced = phase_diff < PHASE_SYNC_WINDOW
+
+    return (synced, phase)
+
+
+def compute_interference(phase: float, last_phase: float) -> float:
+    """
+    Compute wave interference factor from phase difference.
+
+    Constructive interference: cos(phase_diff) > 0 (phases aligned)
+    Destructive interference: cos(phase_diff) < 0 (phases opposed)
+
+    Args:
+        phase: Current phase (radians)
+        last_phase: Previous phase (radians)
+
+    Returns:
+        float: Interference factor (-1 to +1)
+    """
+    import math
+
+    phase_diff = phase - last_phase
+    interference_factor = math.cos(phase_diff)
+    return interference_factor
+
+
+def compute_effective_probability(state: SimState, synced: bool) -> float:
+    """
+    Compute effective perturbation probability with adaptive feedback and phase sync.
+
+    Base probability increases when:
+    - Phase synced: add SYNC_BOOST
+    - perturbation_boost > ADAPTIVE_THRESHOLD: add SYNC_BOOST (stacks)
 
     Args:
         state: Current SimState
+        synced: Whether phase is synced
 
     Returns:
         float: Effective probability (capped at MAX_PROBABILITY)
     """
     base_prob = PERTURBATION_PROBABILITY
 
-    # Adaptive feedback: boost probability if above threshold
-    if state.perturbation_boost > ADAPTIVE_THRESHOLD:
-        effective_prob = base_prob + ADAPTIVE_BOOST
+    # Phase sync boost
+    if synced:
+        effective_prob = base_prob + SYNC_BOOST
     else:
         effective_prob = base_prob
+
+    # Adaptive feedback: boost probability if above threshold (stacks with sync)
+    if state.perturbation_boost > ADAPTIVE_THRESHOLD:
+        effective_prob = effective_prob + SYNC_BOOST
 
     # Cap at MAX_PROBABILITY to prevent runaway
     effective_prob = min(effective_prob, MAX_PROBABILITY)
@@ -891,11 +1001,12 @@ def compute_effective_probability(state: SimState) -> float:
 
 def check_perturbation(state: SimState, cycle: int) -> Optional[dict]:
     """
-    Stochastic GW kick with Poisson clusters, non-linear decay, adaptive feedback, and quantum variance.
+    Stochastic GW kick with phase interference, Poisson clusters, adaptive feedback, and quantum variance.
 
+    Phase interference: cos(phase_diff) modulates magnitude (constructive/destructive).
     Non-linear decay: Higher boost = faster decay (self-limiting chaos).
     Poisson clusters: Multiple kicks per event (bursts, not single kicks).
-    Adaptive feedback: Probability increases when boost > ADAPTIVE_THRESHOLD.
+    Adaptive feedback: Probability increases when boost > ADAPTIVE_THRESHOLD or synced.
     Quantum variance: Vacuum fluctuation breathes into magnitude variance.
 
     Args:
@@ -914,8 +1025,14 @@ def check_perturbation(state: SimState, cycle: int) -> Optional[dict]:
     # Ensure boost doesn't go negative
     state.perturbation_boost = max(0.0, state.perturbation_boost)
 
-    # Get effective probability (with adaptive feedback)
-    effective_prob = compute_effective_probability(state)
+    # Check phase sync (wave interference)
+    synced, phase = check_phase_sync(state)
+
+    # Compute interference factor
+    interference = compute_interference(phase, state.last_phase)
+
+    # Get effective probability (with adaptive feedback and phase sync)
+    effective_prob = compute_effective_probability(state, synced)
     adaptive_active = state.perturbation_boost > ADAPTIVE_THRESHOLD
 
     # Track adaptive triggers
@@ -945,9 +1062,26 @@ def check_perturbation(state: SimState, cycle: int) -> Optional[dict]:
         for _ in range(cluster_size):
             # Apply quantum-amplified variance to magnitude
             actual_mag = PERTURBATION_MAGNITUDE * variance_factor
-            actual_mag = max(0.01, actual_mag)  # Minimum magnitude
-            state.perturbation_boost += actual_mag
-            total_added += actual_mag
+            # Apply interference: effective_mag = actual_mag * (1 + 0.5 * interference)
+            # Interference ranges -1 to +1, so multiplier ranges 0.5 to 1.5
+            effective_mag = actual_mag * (1.0 + 0.5 * interference)
+            # Clamp to positive minimum
+            effective_mag = max(0.01, effective_mag)
+            state.perturbation_boost += effective_mag
+            total_added += effective_mag
+
+        # Update state for next kick
+        state.last_phase = phase
+        if synced:
+            state.sync_count += 1
+
+        # Classify interference type
+        if interference > 0.3:
+            interference_type = "constructive"
+        elif interference < -0.3:
+            interference_type = "destructive"
+        else:
+            interference_type = "neutral"
 
         return {
             "receipt_type": "perturbation",
@@ -962,7 +1096,11 @@ def check_perturbation(state: SimState, cycle: int) -> Optional[dict]:
             "quantum_factor": quantum_factor,
             "variance_factor": variance_factor,
             "capped": capped,
-            "source": "gravitational_wave_cluster_quantum"
+            "phase": phase,
+            "synced": synced,
+            "interference_factor": interference,
+            "interference_type": interference_type,
+            "source": "gravitational_wave_cluster_quantum_interference"
         }
     return None
 
@@ -1074,6 +1212,113 @@ def check_evolution_window(state: SimState, cycle: int) -> Optional[dict]:
         state.evolution_snapshots.append(receipt)
 
         return receipt
+
+    return None
+
+
+def check_cluster(state: SimState, receipt_type: str) -> Optional[dict]:
+    """
+    Check for receipt type clustering (5+ consecutive same-type receipts).
+
+    Tracks consecutive same-type receipts and emits cluster_receipt when
+    CLUSTER_THRESHOLD (5) is reached. Resets counter when type changes.
+
+    Args:
+        state: Current SimState (mutated in place)
+        receipt_type: Type of current receipt
+
+    Returns:
+        Receipt dict if cluster detected, None otherwise
+    """
+    # Check if same type as last
+    if receipt_type == state.last_receipt_type:
+        state.consecutive_same_type += 1
+    else:
+        # Type changed - check if previous run was a cluster
+        if state.consecutive_same_type >= CLUSTER_THRESHOLD:
+            # Emit cluster receipt for previous run
+            cluster_receipt = emit_receipt("cluster", {
+                "tenant_id": "simulation",
+                "cycle": state.cycle,
+                "receipt_type": state.last_receipt_type,
+                "cluster_size": state.consecutive_same_type,
+                "cluster_number": state.cluster_count + 1
+            })
+            state.cluster_count += 1
+            # Reset counter and update last type
+            state.consecutive_same_type = 1
+            state.last_receipt_type = receipt_type
+            return cluster_receipt
+        else:
+            # Not a cluster, just reset
+            state.consecutive_same_type = 1
+            state.last_receipt_type = receipt_type
+
+    return None
+
+
+def check_symmetry_break(state: SimState, receipts: list, cycle: int) -> Optional[dict]:
+    """
+    Check for symmetry break via entropy delta (Shannon entropy of receipt type distribution).
+
+    PERFORMANCE CRITICAL:
+    - ONLY called when cycle % EVOLUTION_WINDOW == 0 (every 500 cycles)
+    - ONLY uses receipts[-SYMMETRY_SAMPLE_SIZE:] (last 100 receipts)
+
+    Symmetry break detected when abs(current - last) > 0.1.
+
+    Args:
+        state: Current SimState (mutated in place)
+        receipts: Full receipt ledger
+        cycle: Current cycle number
+
+    Returns:
+        Receipt dict if symmetry break detected, None otherwise
+    """
+    # ONLY check at evolution window intervals
+    if cycle % EVOLUTION_WINDOW != 0:
+        return None
+
+    # ONLY use last SYMMETRY_SAMPLE_SIZE receipts (bounded performance)
+    sample = receipts[-SYMMETRY_SAMPLE_SIZE:] if len(receipts) >= SYMMETRY_SAMPLE_SIZE else receipts
+
+    if not sample:
+        return None
+
+    # Compute Shannon entropy of receipt type distribution
+    type_counts = {}
+    for receipt in sample:
+        receipt_type = receipt.get("receipt_type", "unknown")
+        type_counts[receipt_type] = type_counts.get(receipt_type, 0) + 1
+
+    # Shannon entropy: H = -Σ p_i * log2(p_i)
+    import math
+    total = len(sample)
+    entropy = 0.0
+    for count in type_counts.values():
+        if count > 0:
+            p = count / total
+            entropy -= p * math.log2(p)
+
+    # Check for symmetry break (delta > 0.1)
+    if abs(entropy - state.last_symmetry_metric) > 0.1:
+        # Emit symmetry_break receipt
+        symmetry_break_receipt = emit_receipt("symmetry_break", {
+            "tenant_id": "simulation",
+            "cycle": cycle,
+            "previous_entropy": state.last_symmetry_metric,
+            "current_entropy": entropy,
+            "entropy_delta": entropy - state.last_symmetry_metric,
+            "sample_size": len(sample),
+            "type_count": len(type_counts),
+            "symmetry_break_number": state.symmetry_breaks + 1
+        })
+        state.symmetry_breaks += 1
+        state.last_symmetry_metric = entropy
+        return symmetry_break_receipt
+    else:
+        # Update metric even if no break
+        state.last_symmetry_metric = entropy
 
     return None
 
