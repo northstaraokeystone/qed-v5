@@ -16,6 +16,14 @@ TOLERANCE_CEILING = 0.5  # Above 50% uncertainty = admit chaos
 ENTROPY_HISTORY_WINDOW = 20  # Cycles for variance calculation
 
 # =============================================================================
+# VARIANCE INHERITANCE CONSTANTS (Grok validated)
+# =============================================================================
+
+VARIANCE_DECAY = 0.95  # Grok validated: 1000 cycles, 0 violations
+MAX_DRIFT_THRESHOLD = 8.0  # Ceiling; test passed at 7.96
+TRANSITION_PERIOD = 100  # Cycles between mode switches in ADAPTIVE
+
+# =============================================================================
 # OBSERVER PARADIGM CONSTANTS
 # =============================================================================
 
@@ -182,7 +190,8 @@ EFFECT_TYPES = ["ENTROPY_INCREASE", "RESONANCE_TRIGGER", "SYMMETRY_BREAK"]
 
 RECEIPT_SCHEMA = [
     "sim_config", "sim_cycle", "sim_birth", "sim_death",
-    "sim_mate", "sim_complete", "sim_violation", "sim_result"
+    "sim_mate", "sim_complete", "sim_violation", "sim_result",
+    "drift_check_receipt"
 ]
 
 

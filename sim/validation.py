@@ -10,7 +10,8 @@ from typing import List, Tuple
 from entropy import emit_receipt
 
 from .constants import (
-    TOLERANCE_FLOOR, TOLERANCE_CEILING, ENTROPY_HISTORY_WINDOW
+    TOLERANCE_FLOOR, TOLERANCE_CEILING, ENTROPY_HISTORY_WINDOW,
+    MAX_DRIFT_THRESHOLD
 )
 from .types_state import SimState
 from .measurement import measure_state, measure_observation_cost
@@ -240,3 +241,54 @@ def emit_entropy_state_receipt(state: SimState, cycle: int, H_start: float,
         "balance_status": balance_status,
         "H_genesis": state.H_genesis
     })
+
+
+def drift_check(state: SimState, config) -> List[str]:
+    """
+    Check variance drift against MAX_DRIFT_THRESHOLD.
+
+    Grok validation: 1000 cycles, max drift 7.96, 0 violations with threshold 8.0
+
+    Args:
+        state: SimState with variance_trace attribute
+        config: SimConfig (unused but kept for API compatibility)
+
+    Returns:
+        List of violation strings (empty = pass)
+    """
+    violations = []
+
+    if not hasattr(state, 'variance_trace') or not state.variance_trace:
+        return violations
+
+    variance_trace = state.variance_trace
+    if len(variance_trace) < 2:
+        return violations
+
+    # Calculate drift: max - min of variance trace
+    max_variance = max(variance_trace)
+    min_variance = min(variance_trace)
+    current_drift = max_variance - min_variance
+
+    # Emit receipt when drift exceeds 75% threshold or on violation
+    threshold_75_pct = MAX_DRIFT_THRESHOLD * 0.75
+    if current_drift >= threshold_75_pct or current_drift > MAX_DRIFT_THRESHOLD:
+        passed = current_drift <= MAX_DRIFT_THRESHOLD
+        receipt = emit_receipt("drift_check_receipt", {
+            "tenant_id": "simulation",
+            "cycle": state.cycle,
+            "current_drift": current_drift,
+            "max_threshold": MAX_DRIFT_THRESHOLD,
+            "passed": passed
+        })
+        state.receipt_ledger.append(receipt)
+
+    # Check for violation
+    if current_drift > MAX_DRIFT_THRESHOLD:
+        violation_msg = (
+            f"Variance drift {current_drift:.2f} exceeds threshold "
+            f"{MAX_DRIFT_THRESHOLD} at cycle {state.cycle}"
+        )
+        violations.append(violation_msg)
+
+    return violations
