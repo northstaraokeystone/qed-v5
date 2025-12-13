@@ -126,10 +126,23 @@ EFFECT_ENTROPY_INCREASE = "ENTROPY_INCREASE"
 EFFECT_RESONANCE_TRIGGER = "RESONANCE_TRIGGER"
 EFFECT_SYMMETRY_BREAK = "SYMMETRY_BREAK"
 
+# Seed model constants (first capture determines archetype)
+CRITICAL_PERIOD = 1  # captures before identity locks (first capture = identity)
+ARCHITECT_BIAS = 0.15  # growth rate bias for ARCHITECT after identity locked
+ENTROPY_AMPLIFIER = 0.1  # growth rate bias for HUNTER on entropy kicks
+
+# Effect → Archetype mapping (seed model)
+EFFECT_TO_ARCHETYPE = {
+    "ENTROPY_INCREASE": "HUNTER",
+    "RESONANCE_TRIGGER": "SHEPHERD",
+    "SYMMETRY_BREAK": "ARCHITECT"
+}
+
 # Module exports for receipt types
 RECEIPT_SCHEMA = [
     "sim_config", "sim_cycle", "sim_birth", "sim_death",
-    "sim_mate", "sim_complete", "sim_violation", "sim_result"
+    "sim_mate", "sim_complete", "sim_violation", "sim_result",
+    "archetype_seed"  # Seed model: first capture determines archetype
 ]
 
 # Pattern state enum
@@ -174,17 +187,16 @@ class Counselor:
 class Crystal:
     """Solidified structure formed from captured kicks.
 
-    Crystal discovers its agent_type via self-measurement at crystallization.
+    SEED MODEL: First capture determines archetype (no bias applied).
+    Subsequent captures use bias for growth rate only.
+    Fair lottery at birth, biased competition at growth.
+
     The effect_distribution tracks what types of effects were captured:
     - ENTROPY_INCREASE: General entropy kicks
     - RESONANCE_TRIGGER: Resonant kicks
     - SYMMETRY_BREAK: Kicks causing symmetry breaking
 
-    At crystallization, the dominant effect type determines archetype:
-    - ENTROPY_INCREASE dominant → HUNTER
-    - RESONANCE_TRIGGER dominant → SHEPHERD
-    - SYMMETRY_BREAK dominant → ARCHITECT
-    - No clear dominant → HYBRID
+    Archetype is set from first_effect via EFFECT_TO_ARCHETYPE mapping.
     """
     crystal_id: int
     seed_id: int
@@ -192,7 +204,7 @@ class Crystal:
     coherence: float = 0.0
     crystallized: bool = False  # True when autocatalysis achieved
     birth_cycle: int = -1  # cycle when autocatalysis achieved, -1 = not born
-    agent_type: str = ""  # discovered at crystallization via self-measurement
+    agent_type: str = ""  # set from first_effect via EFFECT_TO_ARCHETYPE
     effect_distribution: dict = field(default_factory=lambda: {
         "ENTROPY_INCREASE": 0,
         "RESONANCE_TRIGGER": 0,
@@ -201,6 +213,9 @@ class Crystal:
     parent_crystal_id: Optional[int] = None  # for replicated crystals
     generation: int = 0  # depth in family tree (0=original, 1=child, 2=grandchild)
     size_50_reached: bool = False  # track if crystal has exceeded size 50
+    # Seed model fields
+    first_effect: Optional[str] = None  # which effect seeded this crystal
+    archetype_locked: bool = False  # has identity been set (after first capture)
 
 # =============================================================================
 # DATACLASSES (3 required)
@@ -2544,8 +2559,9 @@ def counselor_compete(state: SimState, kick_receipt: dict, kick_phase: float,
     """
     Counselors compete to capture a kick. Best match wins.
 
-    Applies compound growth boost: bigger crystals capture faster.
-    Also applies autocatalysis amplification for crystallized crystals.
+    SEED MODEL: Biases only apply AFTER identity is locked (archetype_locked=True).
+    - First capture (not locked): pure similarity, no bias (fair lottery)
+    - After locked: biases affect growth rate based on archetype
 
     Args:
         state: Current SimState
@@ -2567,9 +2583,16 @@ def counselor_compete(state: SimState, kick_receipt: dict, kick_phase: float,
         # Base similarity from counselor_score
         similarity = counselor_score(counselor, seed, kick_phase, kick_resonant, kick_direction)
 
-        # Apply governance bias for resonant kicks → boosts SHEPHERD births
-        if kick_resonant:
-            similarity += GOVERNANCE_BIAS
+        # SEED MODEL: Only apply biases if archetype is locked (after first capture)
+        # Fair lottery at birth, biased competition at growth
+        if crystal.archetype_locked:
+            # Apply archetype-specific growth biases
+            if crystal.agent_type == "SHEPHERD" and kick_resonant:
+                similarity += GOVERNANCE_BIAS  # SHEPHERD grows faster on resonant kicks
+            elif crystal.agent_type == "ARCHITECT":
+                similarity += ARCHITECT_BIAS  # ARCHITECT grows faster overall
+            elif crystal.agent_type == "HUNTER":
+                similarity += ENTROPY_AMPLIFIER  # HUNTER grows faster on entropy
 
         # Apply autocatalysis amplification for crystallized crystals
         if crystal.crystallized:
@@ -2625,8 +2648,10 @@ def counselor_capture(state: SimState, seed_id: int, kick_receipt: dict,
     """
     Capture a kick and transform it into a crystal member.
 
-    Tracks effect_type in crystal.effect_distribution for archetype discovery.
-    At crystallization, the dominant effect type determines the agent archetype.
+    SEED MODEL: First capture determines archetype (no bias applied during competition).
+    - first_effect is None → this is the first capture, set archetype
+    - archetype = EFFECT_TO_ARCHETYPE[effect_type]
+    - archetype_locked = True after first capture
 
     Args:
         state: Current SimState (mutated in place)
@@ -2650,6 +2675,25 @@ def counselor_capture(state: SimState, seed_id: int, kick_receipt: dict,
 
     # Classify effect type for archetype discovery
     effect_type = classify_effect_type(kick_receipt)
+
+    # SEED MODEL: First capture determines archetype (fair lottery, no bias)
+    archetype_seeded = False
+    if crystal.first_effect is None:
+        # This is the first capture - set archetype from effect type
+        crystal.first_effect = effect_type
+        crystal.agent_type = EFFECT_TO_ARCHETYPE.get(effect_type, "HYBRID")
+        crystal.archetype_locked = True
+        archetype_seeded = True
+
+        # Emit archetype_seed_receipt (LAW_1: no receipt → not real)
+        emit_receipt("archetype_seed", {
+            "tenant_id": "simulation",
+            "receipt_type": "archetype_seed",
+            "crystal_id": crystal.crystal_id,
+            "cycle": cycle,
+            "first_effect": effect_type,
+            "archetype": crystal.agent_type
+        })
 
     # Track effect type in crystal's distribution
     crystal.effect_distribution[effect_type] = crystal.effect_distribution.get(effect_type, 0) + 1
@@ -2694,7 +2738,7 @@ def counselor_capture(state: SimState, seed_id: int, kick_receipt: dict,
     else:
         crystal.coherence = 1.0  # Single member = perfect coherence
 
-    # Emit capture receipt with effect_type for archetype tracking
+    # Emit capture receipt with effect_type and seed model info
     return emit_receipt("capture", {
         "tenant_id": "simulation",
         "cycle": cycle,
@@ -2705,61 +2749,45 @@ def counselor_capture(state: SimState, seed_id: int, kick_receipt: dict,
         "crystal_size": len(crystal.members),
         "coherence": crystal.coherence,
         "effect_type": effect_type,
-        "effect_distribution": dict(crystal.effect_distribution)
+        "effect_distribution": dict(crystal.effect_distribution),
+        "archetype_seeded": archetype_seeded,
+        "archetype": crystal.agent_type
     })
 
 
 def discover_archetype(crystal: Crystal) -> tuple[str, float, bool]:
     """
-    Discover crystal's archetype through self-measurement of effect distribution.
+    Validate crystal's archetype and compute effect distribution stats.
 
-    Wave function collapse paradigm: crystal observes its own capture history
-    and collapses to a definite archetype based on dominant effect type.
+    SEED MODEL: Archetype is already set from first_effect at first capture.
+    This function now validates/reports rather than determines archetype.
 
-    Mapping:
-    - ENTROPY_INCREASE dominant → HUNTER (pursues entropy gradients)
-    - RESONANCE_TRIGGER dominant → SHEPHERD (harmonizes patterns)
-    - SYMMETRY_BREAK dominant → ARCHITECT (creates structure)
-    - No clear dominant (< 60%) → HYBRID (multi-modal)
+    Returns effect distribution statistics for the archetype_discovery receipt.
+    The archetype returned is the one already set (crystal.agent_type).
 
     Args:
         crystal: Crystal to analyze
 
     Returns:
-        tuple: (discovered_archetype, dominance_ratio, was_hybrid)
+        tuple: (archetype, first_effect_ratio, is_mixed_distribution)
     """
-    # Work on a copy to avoid mutating the crystal's actual distribution
     dist = dict(crystal.effect_distribution)
-    crystal_size = len(crystal.members)
-
-    # Apply size-based ARCHITECT bias for large crystals
-    if crystal_size > ARCHITECT_SIZE_TRIGGER:
-        architect_bias = crystal_size * 0.01
-        dist[EFFECT_SYMMETRY_BREAK] = dist.get(EFFECT_SYMMETRY_BREAK, 0) + architect_bias
-
     total = sum(dist.values())
 
     if total == 0:
-        return ("HYBRID", 0.0, True)
+        # No captures yet - return existing archetype (set from first_effect)
+        return (crystal.agent_type or "HYBRID", 0.0, True)
 
-    # Find dominant effect type
-    dominant_effect = max(dist.keys(), key=lambda k: dist[k])
-    dominant_count = dist[dominant_effect]
-    dominance_ratio = dominant_count / total
+    # Calculate how much of the distribution matches the seeded archetype
+    first_effect = crystal.first_effect
+    first_effect_count = dist.get(first_effect, 0) if first_effect else 0
+    first_effect_ratio = first_effect_count / total if total > 0 else 0.0
 
-    # Check if dominance meets threshold (wave function collapse)
-    if dominance_ratio >= ARCHETYPE_DOMINANCE_THRESHOLD:
-        # Clear dominant effect → collapse to archetype
-        archetype_map = {
-            EFFECT_ENTROPY_INCREASE: "HUNTER",
-            EFFECT_RESONANCE_TRIGGER: "SHEPHERD",
-            EFFECT_SYMMETRY_BREAK: "ARCHITECT"
-        }
-        archetype = archetype_map.get(dominant_effect, "HYBRID")
-        return (archetype, dominance_ratio, False)
-    else:
-        # No clear dominant → HYBRID (superposition remains)
-        return ("HYBRID", dominance_ratio, True)
+    # Check if distribution is mixed (other effects present significantly)
+    is_mixed = first_effect_ratio < ARCHETYPE_DOMINANCE_THRESHOLD
+
+    # Return existing archetype (set from first_effect), not recalculated
+    return (crystal.agent_type, first_effect_ratio, is_mixed)
 
 
 def check_crystallization(state: SimState, cycle: int) -> Optional[dict]:
@@ -2769,12 +2797,8 @@ def check_crystallization(state: SimState, cycle: int) -> Optional[dict]:
     Autocatalytic crystallization occurs when the last AUTOCATALYSIS_STREAK captures
     all have similarity >= SELF_PREDICTION_THRESHOLD. Pattern predicts itself = alive.
 
-    This replaces arbitrary size/coherence thresholds with self-recognition:
-    - 3 consecutive self-predictions (similarity >= 0.85) = autocatalysis
-    - Crystal is ALIVE when it predicts itself
-
-    At crystallization, the crystal discovers its archetype via self-measurement
-    (wave function collapse): analyze effect_distribution to find dominant type.
+    SEED MODEL: Archetype is already set from first_effect (first capture).
+    This function just checks autocatalysis threshold for maturity.
 
     First crystal to crystallize boosts all beacons by CRYSTALLIZED_BEACON_BOOST (2x).
 
@@ -2803,18 +2827,18 @@ def check_crystallization(state: SimState, cycle: int) -> Optional[dict]:
 
         # Autocatalysis achieved: pattern predicts itself AUTOCATALYSIS_STREAK times
         if high_similarity_count >= AUTOCATALYSIS_STREAK:
-            # WAVE FUNCTION COLLAPSE: Crystal discovers its archetype via self-measurement
-            discovered_archetype, dominance_ratio, was_hybrid = discover_archetype(crystal)
+            # SEED MODEL: Archetype already set from first_effect, just validate
+            archetype, first_effect_ratio, is_mixed = discover_archetype(crystal)
 
-            # Mark crystal as alive with discovered archetype
+            # Mark crystal as alive (archetype already set from first capture)
             crystal.crystallized = True
             crystal.birth_cycle = cycle
-            crystal.agent_type = discovered_archetype  # DISCOVERED, not assigned!
+            # NOTE: crystal.agent_type is already set from first_effect, don't overwrite
 
             state.crystals_formed += 1
 
             # Track archetype formations for governance monitoring
-            if discovered_archetype == "SHEPHERD":
+            if archetype == "SHEPHERD":
                 state.governance_nodes += 1
                 # Emit governance_node_receipt
                 emit_receipt("governance_node", {
@@ -2824,7 +2848,7 @@ def check_crystallization(state: SimState, cycle: int) -> Optional[dict]:
                     "cycle": cycle,
                     "total_nodes": state.governance_nodes
                 })
-            elif discovered_archetype == "ARCHITECT":
+            elif archetype == "ARCHITECT":
                 state.architect_formations += 1
                 # Emit architect_formation_receipt
                 emit_receipt("architect_formation", {
@@ -2835,9 +2859,9 @@ def check_crystallization(state: SimState, cycle: int) -> Optional[dict]:
                     "size": len(crystal.members),
                     "effect_distribution": dict(crystal.effect_distribution)
                 })
-            elif discovered_archetype == "HUNTER":
+            elif archetype == "HUNTER":
                 state.hunter_formations += 1
-            elif discovered_archetype == "HYBRID":
+            elif archetype == "HYBRID":
                 state.hybrid_formations += 1
 
             # Boost beacons if this is the FIRST crystal
@@ -2852,21 +2876,23 @@ def check_crystallization(state: SimState, cycle: int) -> Optional[dict]:
                 "crystal_id": crystal.crystal_id,
                 "cycle": cycle,
                 "effect_distribution": dict(crystal.effect_distribution),
-                "discovered_archetype": discovered_archetype,
-                "dominance_ratio": dominance_ratio,
-                "was_hybrid": was_hybrid
+                "first_effect": crystal.first_effect,
+                "archetype": archetype,
+                "first_effect_ratio": first_effect_ratio,
+                "is_mixed": is_mixed
             })
             state.receipt_ledger.append(archetype_discovery_receipt)
 
-            # Emit agent_birth receipt with discovery metadata
+            # Emit agent_birth receipt with seed model metadata
             return emit_receipt("agent_birth", {
                 "tenant_id": "simulation",
                 "receipt_type": "agent_birth",
                 "agent_type": crystal.agent_type,
-                "discovery_method": "self_measurement",  # NOT pre-assigned!
+                "discovery_method": "seed_model",  # First capture determined archetype
+                "first_effect": crystal.first_effect,
                 "effect_distribution": dict(crystal.effect_distribution),
-                "dominance_ratio": dominance_ratio,
-                "was_hybrid": was_hybrid,
+                "first_effect_ratio": first_effect_ratio,
+                "is_mixed": is_mixed,
                 "birth_cycle": cycle,
                 "pattern_size": len(crystal.members),
                 "autocatalysis_streak": AUTOCATALYSIS_STREAK,
@@ -2980,7 +3006,8 @@ def check_replication(state: SimState, cycle: int) -> Optional[dict]:
         # Calculate child generation (parent + 1)
         child_generation = crystal.generation + 1
 
-        # Create child crystal - NO archetype, empty effect_distribution
+        # SEED MODEL: Child crystal starts as blank slate
+        # first_effect=None, archetype_locked=False means first capture sets archetype
         child_crystal = Crystal(
             crystal_id=child_id,
             seed_id=child_seed_id,
@@ -2988,14 +3015,16 @@ def check_replication(state: SimState, cycle: int) -> Optional[dict]:
             coherence=0.0,
             crystallized=False,  # Child must crystallize independently
             birth_cycle=-1,
-            agent_type="",  # NO archetype - will be discovered!
+            agent_type="",  # Set from first_effect on first capture
             effect_distribution={
                 "ENTROPY_INCREASE": 0,
                 "RESONANCE_TRIGGER": 0,
                 "SYMMETRY_BREAK": 0
             },
             parent_crystal_id=crystal.crystal_id,  # Track lineage
-            generation=child_generation  # Depth in family tree
+            generation=child_generation,  # Depth in family tree
+            first_effect=None,  # SEED MODEL: first capture sets this
+            archetype_locked=False  # SEED MODEL: not locked until first capture
         )
         state.crystals.append(child_crystal)
 
@@ -3023,10 +3052,11 @@ def check_replication(state: SimState, cycle: int) -> Optional[dict]:
             "cycle": cycle,
             "parent_crystal_id": crystal.crystal_id,
             "parent_archetype": crystal.agent_type,
+            "parent_first_effect": crystal.first_effect,
             "child_crystal_id": child_id,
-            "child_archetype": "",  # UNKNOWN until child crystallizes
+            "child_archetype": "",  # Set from first_effect on first capture
             "parent_captures": len(crystal.members),
-            "note": "Child discovers own archetype via self-measurement"
+            "note": "SEED MODEL: Child gets archetype from first capture (fair lottery)"
         })
 
     return None
