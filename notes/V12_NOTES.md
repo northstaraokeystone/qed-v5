@@ -228,6 +228,16 @@ The progression is developmental:
 
 ---
 
+## Risks
+
+### RESOLVED: Variance Amplification
+- **Original concern:** Inherited variance could amplify noise across generations
+- **Grok validation:** 1000 cycles, 10 transitions, max drift 7.96, 0 violations
+- **Resolution:** VARIANCE_DECAY = 0.95 caps effectively, transitions smooth
+- **Status:** CLOSED
+
+---
+
 **V12 Status:** Complete. Reproductive layer is load-bearing. System can now breed new agents from wound patterns, validate dynamics via simulation, and self-audit within logical bounds. The species evolves through sexual recombination under human oversight. Thermodynamic constraints enforced. Gödel bounds respected.
 
 **Hash of this document:** `COMPUTE_ON_SAVE`

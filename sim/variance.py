@@ -38,6 +38,28 @@ def variance_entropy(distribution: FitnessDistribution) -> float:
     return distribution.entropy()
 
 
+def variance_to_entropy(variance: float) -> float:
+    """
+    Convert variance to entropy in bits (Gaussian differential entropy).
+
+    Grok export utility: Display variance in bits for cross-model comparison.
+    Example: variance 3.39 → ~2.93 bits
+
+    Formula: H = 0.5 * log2(2 * pi * e * variance)
+
+    Args:
+        variance: Variance value (must be > 0 for valid entropy)
+
+    Returns:
+        Entropy in bits (0.0 if variance <= 0)
+    """
+    if variance <= 0:
+        return 0.0
+
+    # Gaussian differential entropy: H = 0.5 * log2(2 * pi * e * variance)
+    return 0.5 * math.log2(2 * math.pi * math.e * variance)
+
+
 def pooled_variance(distributions: List[FitnessDistribution]) -> float:
     """
     Calculate pooled variance from multiple parent distributions.
@@ -205,6 +227,7 @@ def apply_distribution_to_pattern(pattern: dict, distribution: FitnessDistributi
 
 __all__ = [
     "variance_entropy",
+    "variance_to_entropy",
     "pooled_variance",
     "inherit_variance",
     "distribution_from_pattern",

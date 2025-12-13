@@ -25,6 +25,7 @@ class SimConfig:
     variance_inheritance: str = "INHERIT"
     inherit_variance_decay: float = 0.95  # Prevents runaway variance amplification
     reset_variance_prior: float = 0.1  # Uninformed prior variance for RESET mode
+    transition_period: int = 100  # Cycles between mode switches in ADAPTIVE (MULTIVERSE)
 
 
 # =============================================================================
