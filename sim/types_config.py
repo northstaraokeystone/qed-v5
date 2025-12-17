@@ -200,7 +200,59 @@ SCENARIO_ROI_GATE = SimConfig(
 )
 
 # =============================================================================
-# MANDATORY SCENARIOS LIST (11 total - including mitigation scenarios)
+# LEDGER ANCHORING SCENARIOS (Per Grok: tamper-proof autonomy)
+# =============================================================================
+
+SCENARIO_LEDGER_BONUS = SimConfig(
+    n_cycles=100,
+    n_initial_patterns=5,
+    wound_rate=0.1,
+    resource_budget=1.0,
+    random_seed=56,
+    scenario_name="LEDGER_BONUS",
+    variance_inheritance="INHERIT",
+    inherit_variance_decay=0.95,
+    reset_variance_prior=0.1
+)
+
+SCENARIO_DISTRIBUTED_RESILIENCE = SimConfig(
+    n_cycles=100,
+    n_initial_patterns=5,
+    wound_rate=0.1,
+    resource_budget=1.0,
+    random_seed=57,
+    scenario_name="DISTRIBUTED_RESILIENCE",
+    variance_inheritance="INHERIT",
+    inherit_variance_decay=0.95,
+    reset_variance_prior=0.1
+)
+
+SCENARIO_VOLUME_STRESS = SimConfig(
+    n_cycles=100,
+    n_initial_patterns=5,
+    wound_rate=0.1,
+    resource_budget=1.0,
+    random_seed=58,
+    scenario_name="VOLUME_STRESS",
+    variance_inheritance="INHERIT",
+    inherit_variance_decay=0.95,
+    reset_variance_prior=0.1
+)
+
+SCENARIO_CHAIN_INTEGRITY = SimConfig(
+    n_cycles=100,
+    n_initial_patterns=5,
+    wound_rate=0.1,
+    resource_budget=1.0,
+    random_seed=59,
+    scenario_name="CHAIN_INTEGRITY",
+    variance_inheritance="INHERIT",
+    inherit_variance_decay=0.95,
+    reset_variance_prior=0.1
+)
+
+# =============================================================================
+# MANDATORY SCENARIOS LIST (15 total - including ledger scenarios)
 # =============================================================================
 
 MANDATORY_SCENARIOS = [
@@ -215,4 +267,8 @@ MANDATORY_SCENARIOS = [
     "STACKED_MITIGATION",
     "P_SENSITIVITY",
     "ROI_GATE",
+    "LEDGER_BONUS",
+    "DISTRIBUTED_RESILIENCE",
+    "VOLUME_STRESS",
+    "CHAIN_INTEGRITY",
 ]
