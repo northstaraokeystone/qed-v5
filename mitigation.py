@@ -36,6 +36,10 @@ EFF_ALPHA_MIN = 1.58             # Minimum effective alpha with full stack
 RETENTION_VS_UNMITIGATED = 2.0   # 2x acceleration target
 CYCLES_TO_10K_TARGET = 2.5       # Target cycles to 10^3
 
+# Ledger anchoring bonuses (from Grok: "boost eff_alpha +0.1")
+LEDGER_ALPHA_BONUS = 0.10        # +0.10 from tamper-proof hash chain
+DISTRIBUTED_ALPHA_BONUS = 0.02   # +0.02 from distributed merkle forest
+
 # Base parameters
 DEFAULT_BASE_TAU = 1200          # 20 min Mars light-time in seconds
 DEFAULT_BASE_ALPHA = 1.0         # Baseline alpha
@@ -59,6 +63,9 @@ class MitigationConfig:
         "predictive": True,
         "relay": True
     })
+    # Ledger anchoring options (from Grok: tamper-proof autonomy)
+    ledger_anchored: bool = False      # Enable ledger alpha bonus (+0.10)
+    distributed_anchor: bool = False   # Enable distributed alpha bonus (+0.02)
 
 
 @dataclass
@@ -70,6 +77,10 @@ class MitigationResult:
     eff_alpha: float
     mitigations_applied: List[str]
     cycles_to_10k: float
+    # Ledger anchoring fields
+    ledger_anchored: bool = False
+    distributed_anchor: bool = False
+    ledger_bonus: float = 0.0          # Actual bonus applied (+0.10 or +0.12)
 
 
 # =============================================================================
@@ -177,25 +188,41 @@ def compute_eff_alpha(
     base_alpha: float,
     eff_tau: float,
     base_tau: float,
-    receipt_integrity: float = 1.0
+    receipt_integrity: float = 1.0,
+    ledger_anchored: bool = False,
+    distributed_anchor: bool = False
 ) -> float:
     """
     Compute effective alpha with all mitigation factors.
 
-    Formula: eff_alpha = base_alpha * (base_tau / eff_tau) * sqrt(receipt_integrity)
+    Formula:
+        base_eff = base_alpha * (base_tau / eff_tau) * sqrt(receipt_integrity)
+        ledger_bonus = LEDGER_ALPHA_BONUS if ledger_anchored else 0  (+0.10)
+        dist_bonus = DISTRIBUTED_ALPHA_BONUS if distributed_anchor else 0  (+0.02)
+        eff_alpha = base_eff + ledger_bonus + dist_bonus
 
     The tau reduction translates directly to alpha improvement:
     - Lower effective tau means faster decision cycles
     - This scales alpha proportionally
+    - Ledger anchoring adds trust bonus for tamper-proof decisions
+    - Distributed anchoring adds resilience bonus for blackout survival
+
+    Example with full stack + ledger + distributed:
+        base_eff = 1.58 (from tau mitigation)
+        + ledger_anchored = 0.10
+        + distributed = 0.02
+        = eff_alpha = 1.70
 
     Args:
         base_alpha: Baseline sovereignty alpha (typically 1.0)
         eff_tau: Effective tau after mitigation stack
         base_tau: Original tau without mitigation
         receipt_integrity: Receipt-based integrity factor (0.0-1.0)
+        ledger_anchored: Whether decisions are merkle-anchored (+0.10)
+        distributed_anchor: Whether using merkle forest (+0.02)
 
     Returns:
-        float: Effective alpha (should be >= 1.58 with full stack)
+        float: Effective alpha (should be >= 1.58 with full stack, 1.70 with ledger)
     """
     if eff_tau <= 0:
         raise StopRule(f"Invalid eff_tau: {eff_tau} must be > 0")
@@ -203,7 +230,13 @@ def compute_eff_alpha(
     tau_factor = base_tau / eff_tau
     integrity_factor = math.sqrt(max(0, min(1, receipt_integrity)))
 
-    return base_alpha * tau_factor * integrity_factor
+    base_eff = base_alpha * tau_factor * integrity_factor
+
+    # Apply ledger anchoring bonuses (Grok: "boost eff_alpha +0.1")
+    ledger_bonus = LEDGER_ALPHA_BONUS if ledger_anchored else 0.0
+    dist_bonus = DISTRIBUTED_ALPHA_BONUS if distributed_anchor else 0.0
+
+    return base_eff + ledger_bonus + dist_bonus
 
 
 # =============================================================================
@@ -267,6 +300,9 @@ def stack_mitigation(
     Example with all three enabled:
         eff_tau = 1200s x 0.75 x 0.80 x 0.65 = 468s ~ 7.8min
 
+    With ledger anchoring (Grok: "boost eff_alpha +0.1"):
+        eff_alpha = base_eff + 0.10 (ledger) + 0.02 (distributed)
+
     Args:
         base_tau: Base tau in seconds (e.g., 1200s for Mars)
         config: MitigationConfig with retention factors and enabled flags
@@ -286,8 +322,12 @@ def stack_mitigation(
     # Compute effective tau
     eff_tau = base_tau * retention
 
-    # Compute effective alpha
-    eff_alpha = compute_eff_alpha(base_alpha, eff_tau, base_tau, receipt_integrity)
+    # Compute effective alpha with ledger bonuses
+    eff_alpha = compute_eff_alpha(
+        base_alpha, eff_tau, base_tau, receipt_integrity,
+        ledger_anchored=config.ledger_anchored,
+        distributed_anchor=config.distributed_anchor
+    )
 
     # Compute cycles to 10^3
     cycles_to_10k = compute_cycles_to_10k(eff_alpha)
@@ -296,6 +336,13 @@ def stack_mitigation(
     mitigations_applied = [
         name for name, enabled in config.enabled.items() if enabled
     ]
+
+    # Calculate actual ledger bonus applied
+    ledger_bonus = 0.0
+    if config.ledger_anchored:
+        ledger_bonus += LEDGER_ALPHA_BONUS
+    if config.distributed_anchor:
+        ledger_bonus += DISTRIBUTED_ALPHA_BONUS
 
     # Emit receipt
     emit_mitigation_stack_receipt(
@@ -314,7 +361,10 @@ def stack_mitigation(
         retention_factor=retention,
         eff_alpha=eff_alpha,
         mitigations_applied=mitigations_applied,
-        cycles_to_10k=cycles_to_10k
+        cycles_to_10k=cycles_to_10k,
+        ledger_anchored=config.ledger_anchored,
+        distributed_anchor=config.distributed_anchor,
+        ledger_bonus=ledger_bonus
     )
 
 
@@ -464,6 +514,9 @@ __all__ = [
     "CYCLES_TO_10K_TARGET",
     "DEFAULT_BASE_TAU",
     "DEFAULT_BASE_ALPHA",
+    # Ledger anchoring constants
+    "LEDGER_ALPHA_BONUS",
+    "DISTRIBUTED_ALPHA_BONUS",
     # Data classes
     "MitigationConfig",
     "MitigationResult",

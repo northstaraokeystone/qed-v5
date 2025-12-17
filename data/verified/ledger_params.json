@@ -1,0 +1,25 @@
+{
+  "version": "1.0.0",
+  "source": "Grok physics validation + ProofPack patterns",
+  "ledger": {
+    "entries_per_cycle": 1000,
+    "entries_per_cycle_range": [100, 10000],
+    "cycle_duration_seconds": 60,
+    "entry_size_bytes": 256
+  },
+  "anchoring": {
+    "batch_size": 100,
+    "distributed_roots": 3,
+    "hash_algos": ["SHA256", "BLAKE3"],
+    "chain_depth_max": 10000
+  },
+  "alpha_bonus": {
+    "ledger_anchored": 0.10,
+    "distributed_bonus": 0.02
+  },
+  "volume_stress": {
+    "range": [100, 10000],
+    "step": 1000
+  },
+  "payload_hash": "COMPUTE_ON_LOAD"
+}
