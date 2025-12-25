@@ -41,6 +41,13 @@ try:
     import blake3
     HAS_BLAKE3 = True
 except ImportError:
+    import warnings
+    warnings.warn(
+        "blake3 not available; dual_hash will use SHA256:SHA256 fallback. "
+        "Install blake3 for production: pip install blake3",
+        RuntimeWarning,
+        stacklevel=2
+    )
     HAS_BLAKE3 = False
 
 

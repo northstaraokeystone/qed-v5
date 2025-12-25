@@ -20,7 +20,6 @@ __all__ = [
     "qed",
     "run",
     "check_constraints",
-    "write_receipt_jsonl",
     "detect_config_drift",
 ]
 
@@ -348,11 +347,8 @@ def check_constraints(
     return (verified, violations)
 
 
-def write_receipt_jsonl(receipt: QEDReceipt, fh: IO[str]) -> None:
-    """Append receipt as single JSON line to file handle."""
-    receipt_dict = asdict(receipt)
-    line = json.dumps(receipt_dict, separators=(",", ":"))
-    fh.write(line + "\n")
+# NOTE: write_receipt_jsonl moved to receipts.py per CLAUDEME §8 (single source of truth)
+# Import from receipts.py: from receipts import write_receipt_jsonl
 
 
 def _estimate_entropy_bits(signal: np.ndarray, bit_depth: int) -> float:

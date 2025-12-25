@@ -45,16 +45,27 @@ def generate_pattern_id(physics_domain: str, failure_mode: str, params: Dict) ->
 
 
 def load_library(path: str = "data/shared_anomalies.jsonl") -> List[AnomalyPattern]:
-    """Load all patterns from JSONL file."""
+    """Load all patterns from JSONL file.
+
+    Malformed lines are skipped with a warning rather than failing the entire load.
+    """
+    import warnings
     patterns = []
     p = Path(path)
     if not p.exists():
         return patterns
     with open(p, 'r') as f:
-        for line in f:
-            if line.strip():
+        for line_num, line in enumerate(f, start=1):
+            if not line.strip():
+                continue
+            try:
                 data = json.loads(line)
                 patterns.append(AnomalyPattern(**data))
+            except (json.JSONDecodeError, TypeError, KeyError) as e:
+                warnings.warn(
+                    f"Skipping malformed pattern at {path}:{line_num}: {e}",
+                    RuntimeWarning
+                )
     return patterns
 
 

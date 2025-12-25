@@ -299,12 +299,18 @@ def stream(receipts: List[Dict]) -> List[Dict]:
 # Persistence Operations
 # =============================================================================
 
+# Cache for chain positions to avoid O(n) line counting on every append
+_chain_position_cache: Dict[str, int] = {}
+
+
 def append(event: EventRecord, log_path: str = DEFAULT_LOG_PATH) -> Dict:
     """
     Append EventRecord to JSONL log (persistence operation).
 
     Maintains hash chain integrity by reading last event's hash and linking to it.
     NOT a pure function - has side effect of writing to disk.
+
+    Uses position cache to avoid O(n) line counting on repeated appends.
 
     Args:
         event: EventRecord to append
@@ -317,12 +323,18 @@ def append(event: EventRecord, log_path: str = DEFAULT_LOG_PATH) -> Dict:
     log_file = Path(log_path)
     log_file.parent.mkdir(parents=True, exist_ok=True)
 
-    # Determine chain position
-    if log_file.exists():
+    # Determine chain position using cache when possible
+    if log_path in _chain_position_cache:
+        chain_position = _chain_position_cache[log_path] + 1
+    elif log_file.exists():
+        # Initial cache population - count lines once
         with open(log_file, "r") as f:
             chain_position = sum(1 for _ in f) + 1
     else:
         chain_position = 1
+
+    # Update cache
+    _chain_position_cache[log_path] = chain_position
 
     # Append event to JSONL
     with open(log_file, "a") as f:
@@ -347,7 +359,7 @@ def append(event: EventRecord, log_path: str = DEFAULT_LOG_PATH) -> Dict:
 
 def get_latest(n: int = 10, log_path: str = DEFAULT_LOG_PATH) -> List[EventRecord]:
     """
-    Retrieve n most recent events from log.
+    Retrieve n most recent events from log using efficient tail-seek.
 
     No filtering - returns raw events. Use query() to filter by predicate.
 
@@ -362,16 +374,39 @@ def get_latest(n: int = 10, log_path: str = DEFAULT_LOG_PATH) -> List[EventRecor
     if not log_file.exists():
         return []
 
+    # Use efficient tail-seek for large files (avoid reading entire file)
     events: List[EventRecord] = []
-    with open(log_file, "r") as f:
-        lines = f.readlines()
+    file_size = log_file.stat().st_size
 
-    # Get last n lines
-    recent_lines = lines[-n:] if len(lines) >= n else lines
+    if file_size == 0:
+        return []
+
+    # For small files (<64KB), just read all; for larger, seek from end
+    if file_size < 65536:
+        with open(log_file, "r") as f:
+            lines = f.readlines()
+        recent_lines = lines[-n:] if len(lines) >= n else lines
+    else:
+        # Efficient tail: seek backwards in chunks to find last n lines
+        chunk_size = min(8192, file_size)
+        lines_found: List[str] = []
+        with open(log_file, "rb") as f:
+            position = file_size
+            while position > 0 and len(lines_found) < n + 1:
+                seek_pos = max(0, position - chunk_size)
+                f.seek(seek_pos)
+                chunk = f.read(position - seek_pos).decode("utf-8", errors="replace")
+                chunk_lines = chunk.splitlines(keepends=True)
+                # Prepend to accumulated lines (order matters for partial reads)
+                lines_found = chunk_lines + lines_found
+                position = seek_pos
+        # Filter and take last n non-empty lines
+        recent_lines = [ln.strip() for ln in lines_found if ln.strip()][-n:]
 
     for line in recent_lines:
         if line.strip():
-            data = json.loads(line)
+            line_str = line if isinstance(line, str) else line.strip()
+            data = json.loads(line_str)
             events.append(EventRecord.from_dict(data))
 
     # Return most recent first
@@ -529,15 +564,20 @@ def replay(
 
 
 # =============================================================================
-# EventStream Class (for convenience)
+# EventStream Class (DEPRECATED - use module functions directly)
 # =============================================================================
 
 class EventStream:
     """
-    Convenience class providing access to event stream functionality.
+    DEPRECATED: Stateless wrapper around module functions.
 
-    This is a stateless wrapper around the module's functional API.
-    All operations are pure functions (except append which persists to disk).
+    Per CLAUDEME §8, prefer using module-level functions directly:
+        - stream(receipts) instead of EventStream.stream(receipts)
+        - append(event) instead of EventStream.append(event)
+        - get_latest(n) instead of EventStream.get_latest(n)
+
+    This class adds no state and exists only for backward compatibility.
+    It will be removed in a future version.
     """
 
     @staticmethod
